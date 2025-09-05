@@ -7,7 +7,7 @@ import logging
 import json
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from logging.handlers import RotatingFileHandler
 
@@ -74,7 +74,7 @@ class StructuredLogger:
         class JsonFormatter(logging.Formatter):
             def format(self, record):
                 log_data = {
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                     'level': record.levelname,
                     'logger': record.name,
                     'message': record.getMessage(),
@@ -95,33 +95,33 @@ class StructuredLogger:
         
         return JsonFormatter()
     
-    def _log_with_context(self, level: int, message: str, context: Dict[str, Any] = None):
+    def _log_with_context(self, level: int, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log message with structured context."""
         extra = {}
         if context and self.config.structured_logging:
             extra['context'] = context
         
-        self.logger.log(level, message, extra=extra)
+        self.logger.log(level, message, extra=extra, exc_info=exc_info)
     
-    def debug(self, message: str, context: Dict[str, Any] = None):
+    def debug(self, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log debug message with optional context."""
-        self._log_with_context(logging.DEBUG, message, context)
+        self._log_with_context(logging.DEBUG, message, context, exc_info=exc_info)
     
-    def info(self, message: str, context: Dict[str, Any] = None):
+    def info(self, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log info message with optional context."""
-        self._log_with_context(logging.INFO, message, context)
+        self._log_with_context(logging.INFO, message, context, exc_info=exc_info)
     
-    def warning(self, message: str, context: Dict[str, Any] = None):
+    def warning(self, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log warning message with optional context."""
-        self._log_with_context(logging.WARNING, message, context)
+        self._log_with_context(logging.WARNING, message, context, exc_info=exc_info)
     
-    def error(self, message: str, context: Dict[str, Any] = None):
+    def error(self, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log error message with optional context."""
-        self._log_with_context(logging.ERROR, message, context)
+        self._log_with_context(logging.ERROR, message, context, exc_info=exc_info)
     
-    def critical(self, message: str, context: Dict[str, Any] = None):
+    def critical(self, message: str, context: Dict[str, Any] = None, exc_info=False):
         """Log critical message with optional context."""
-        self._log_with_context(logging.CRITICAL, message, context)
+        self._log_with_context(logging.CRITICAL, message, context, exc_info=exc_info)
 
 class LoggerFactory:
     """
