@@ -332,18 +332,16 @@ class GpuRepository(BaseRepository):
         """
         self._log_operation("release_all_for_case", case_id=case_id)
         
-        with self.db_connection.transaction():
-            # Update all GPUs assigned to this case
-            query = """
-                UPDATE gpu_resources 
-                SET status = ?, assigned_case = NULL, last_updated = ?
-                WHERE assigned_case = ?
-            """
-            
-            result = self._execute_update(
-                query,
-                (GpuStatus.IDLE.value, datetime.utcnow().isoformat(), case_id)
-            )
+        query = """
+            UPDATE gpu_resources
+            SET status = ?, assigned_case = NULL, last_updated = CURRENT_TIMESTAMP
+            WHERE assigned_case = ?
+        """
+
+        result = self._execute_query(
+            query,
+            (GpuStatus.IDLE.value, case_id)
+        )
         
         self.logger.info("Released GPUs for case", {
             "case_id": case_id,

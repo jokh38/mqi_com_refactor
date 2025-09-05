@@ -52,7 +52,8 @@ class BaseRepository(ABC):
                 elif fetch_all:
                     return cursor.fetchall()
                 else:
-                    return cursor.lastrowid
+                    # For INSERT, UPDATE, DELETE, return the number of affected rows
+                    return cursor.rowcount
                     
         except Exception as e:
             self.logger.error(f"Database query failed: {query}", {
