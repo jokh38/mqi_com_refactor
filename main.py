@@ -36,11 +36,8 @@ from watchdog.events import FileSystemEventHandler, DirCreatedEvent
 from src.config.settings import Settings
 from src.infrastructure.logging_handler import StructuredLogger  
 from src.infrastructure.process_manager import ProcessManager
-from src.ui.display import DisplayManager
-from src.ui.provider import DashboardDataProvider
+from src.infrastructure.ui_process_manager import UIProcessManager
 from src.database.connection import DatabaseConnection
-from src.repositories.case_repo import CaseRepository
-from src.repositories.gpu_repo import GpuRepository
 from src.core.worker import worker_main
 
 
@@ -114,7 +111,7 @@ class MQIApplication:
         self.case_queue = mp.Queue()
         self.observer: Optional[Observer] = None
         self.executor: Optional[ProcessPoolExecutor] = None
-        self.display_manager: Optional[DisplayManager] = None
+        self.ui_process_manager: Optional[UIProcessManager] = None
         self.shutdown_event = threading.Event()
         
     def initialize_logging(self) -> None:
@@ -183,32 +180,30 @@ class MQIApplication:
     
     def start_dashboard(self) -> None:
         """
-        Start the dashboard UI if configured.
+        Start the dashboard UI as a separate process if configured.
         
-        FROM: Dashboard startup from original main.py.
+        FROM: Dashboard startup from original main.py, modified to use UIProcessManager.
         """
         try:
             if not self.settings.ui.auto_start:
                 self.logger.info("Dashboard auto-start disabled")
                 return
                 
-            # Create dashboard data provider
+            # Get database path
             db_path = self.settings.get_database_path()
-            db_connection = DatabaseConnection(
-                db_path=db_path,
-                config=self.settings.database,
+            
+            # Create UI process manager
+            self.ui_process_manager = UIProcessManager(
+                database_path=str(db_path),
+                config=self.settings,
                 logger=self.logger
             )
             
-            case_repo = CaseRepository(db_connection, self.logger)
-            gpu_repo = GpuRepository(db_connection, self.logger)
-            provider = DashboardDataProvider(case_repo, gpu_repo, self.logger)
-            
-            # Start dashboard
-            self.display_manager = DisplayManager(provider, self.logger)
-            self.display_manager.start()
-            
-            self.logger.info("Dashboard started")
+            # Start UI as separate process
+            if self.ui_process_manager.start():
+                self.logger.info("Dashboard UI process started successfully")
+            else:
+                self.logger.error("Failed to start dashboard UI process")
             
         except Exception as e:
             self.logger.error("Failed to start dashboard", {"error": str(e)})
@@ -284,9 +279,9 @@ class MQIApplication:
             self.observer.stop()
             self.observer.join()
             
-        # Stop dashboard
-        if self.display_manager:
-            self.display_manager.stop()
+        # Stop dashboard UI process
+        if self.ui_process_manager:
+            self.ui_process_manager.stop()
             
         # Executor shutdown handled by context manager
         
