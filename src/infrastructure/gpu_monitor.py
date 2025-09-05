@@ -68,7 +68,7 @@ class GpuMonitor:
         except subprocess.CalledProcessError as e:
             self.logger.error("nvidia-smi command failed", {
                 "return_code": e.returncode,
-                "stderr": e.stderr.decode() if e.stderr else None
+                "stderr": e.stderr if e.stderr else None
             })
             raise GpuResourceError(f"nvidia-smi command failed: {e}")
             
@@ -237,7 +237,7 @@ class GpuMonitor:
             )
             
             self.logger.debug("nvidia-smi is available", {
-                "version_output": result.stdout.decode().strip()
+                "version_output": result.stdout.strip()
             })
             
             return True
