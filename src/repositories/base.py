@@ -1,8 +1,3 @@
-# =====================================================================================
-# Target File: src/repositories/base.py
-# Source Reference: Abstract repository pattern for database operations
-# =====================================================================================
-
 from abc import ABC
 from typing import Optional, Any
 
@@ -58,8 +53,9 @@ class BaseRepository(ABC):
                 elif fetch_all:
                     return cursor.fetchall()
                 else:
-                    return cursor.lastrowid
-
+                    # For INSERT, UPDATE, DELETE, return the number of affected rows
+                    return cursor.rowcount
+                    
         except Exception as e:
             self.logger.error(
                 f"Database query failed: {query}", {"error": str(e), "params": params}

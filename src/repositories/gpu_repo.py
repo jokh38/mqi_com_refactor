@@ -1,8 +1,3 @@
-# =====================================================================================
-# Target File: src/repositories/gpu_repo.py
-# Source Reference: src/database_handler.py (gpu_resources table operations)
-# =====================================================================================
-
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
@@ -41,7 +36,7 @@ class GpuRepository(BaseRepository):
         FROM: The database update logic from `populate_gpu_resources_from_nvidia_smi`
               in original `database_handler.py`.
         REFACTORING NOTES: Now receives clean, parsed data. Uses a single
-                          transactional `UPSERT` for efficiency and atomicity.
+                           transactional `UPSERT` for efficiency and atomicity.
 
         Args:
             gpu_data: List of dictionaries containing GPU information
@@ -325,20 +320,21 @@ class GpuRepository(BaseRepository):
             Number of GPUs released
         """
         self._log_operation("release_all_for_case", case_id=case_id)
+        
+        query = """
+            UPDATE gpu_resources
+            SET status = ?, assigned_case = NULL, last_updated = CURRENT_TIMESTAMP
+            WHERE assigned_case = ?
+        """
 
-        with self.db.transaction() as conn:
-            query = """
-                UPDATE gpu_resources
-                SET status = ?, assigned_case = NULL, last_updated = ?
-                WHERE assigned_case = ?
-            """
-            cursor = conn.execute(
-                query, (GpuStatus.IDLE.value, datetime.now(UTC).isoformat(), case_id)
-            )
-            result = cursor.rowcount
-
-        self.logger.info(
-            "Released GPUs for case", {"case_id": case_id, "gpus_released": result}
+        result = self._execute_query(
+            query,
+            (GpuStatus.IDLE.value, case_id)
         )
-
+        
+        self.logger.info("Released GPUs for case", {
+            "case_id": case_id,
+            "gpus_released": result
+        })
+        
         return result
