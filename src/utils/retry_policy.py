@@ -55,68 +55,68 @@ class RetryPolicy:
         self.strategy = strategy
         self.retryable_exceptions = retryable_exceptions or [RetryableError]
         self.logger = logger
-        # TODO (AI): Initialize other required class members.
 
-    def execute(self, func: Callable[..., Any], *args, **kwargs) -> Any:
+    def execute(self, func: Callable[..., Any], operation_name: str = "default_operation", context: Optional[dict] = None) -> Any:
         """
         Executes a function with retry logic.
-        
-        Args:
-            func: Function to execute with retries
-            *args: Positional arguments for the function
-            **kwargs: Keyword arguments for the function
-            
-        Returns:
-            The return value of the function if successful
-            
-        Raises:
-            The last exception if all retry attempts are exhausted
-            
-        # TODO (AI): Implement retry execution logic.
         """
-        # pass
+        last_exception = None
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                return func()
+            except Exception as e:
+                last_exception = e
+                if not self._should_retry(e, attempt):
+                    raise e
+
+                delay = self._calculate_delay(attempt)
+                self._log_retry_attempt(e, attempt, delay, operation_name, context)
+                time.sleep(delay)
+
+        raise last_exception
 
     def _should_retry(self, exception: Exception, attempt: int) -> bool:
         """
         Determines if an exception should trigger a retry.
-        
-        Args:
-            exception: The exception that occurred
-            attempt: Current attempt number (1-based)
-            
-        Returns:
-            bool: True if retry should be attempted
-            
-        # TODO (AI): Implement retry decision logic.
         """
-        # pass
+        if attempt >= self.max_attempts:
+            return False
+
+        for retryable in self.retryable_exceptions:
+            if isinstance(exception, retryable):
+                return True
+        return False
 
     def _calculate_delay(self, attempt: int) -> float:
         """
         Calculates the delay before the next retry attempt.
-        
-        Args:
-            attempt: Current attempt number (1-based)
-            
-        Returns:
-            float: Delay in seconds before next attempt
-            
-        # TODO (AI): Implement delay calculation based on strategy.
         """
-        # pass
+        if self.strategy == RetryStrategy.FIXED_DELAY:
+            delay = self.base_delay
+        elif self.strategy == RetryStrategy.EXPONENTIAL_BACKOFF:
+            delay = self.base_delay * (2 ** (attempt - 1))
+        elif self.strategy == RetryStrategy.LINEAR_BACKOFF:
+            delay = self.base_delay * attempt
+        else:
+            delay = self.base_delay
 
-    def _log_retry_attempt(self, exception: Exception, attempt: int, delay: float) -> None:
+        return min(delay, self.max_delay)
+
+    def _log_retry_attempt(self, exception: Exception, attempt: int, delay: float, operation_name: str, context: Optional[dict]) -> None:
         """
         Logs a retry attempt with relevant context.
-        
-        Args:
-            exception: The exception that triggered the retry
-            attempt: Current attempt number
-            delay: Delay before next attempt
-            
-        # TODO (AI): Implement retry logging.
         """
-        # pass
+        if self.logger:
+            log_context = {
+                "operation": operation_name,
+                "exception": str(exception),
+                "attempt": attempt,
+                "max_attempts": self.max_attempts,
+                "delay": delay,
+            }
+            if context:
+                log_context.update(context)
+            self.logger.warning("Retrying operation", log_context)
 
 
 def retry(
@@ -127,25 +127,12 @@ def retry(
 ):
     """
     Decorator for applying retry logic to functions.
-    
-    FROM: Decorator pattern for retry logic used in various handlers.
-    
-    Args:
-        max_attempts: Maximum number of retry attempts
-        base_delay: Base delay between retries in seconds
-        strategy: Retry strategy to use
-        retryable_exceptions: List of exception types that should trigger retries
-        
-    Returns:
-        Decorator function
-        
-    # TODO (AI): Implement retry decorator.
     """
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
-            # TODO (AI): Implement decorator wrapper logic using RetryPolicy.
-            pass
+            policy = RetryPolicy(max_attempts, base_delay, strategy, retryable_exceptions)
+            return policy.execute(func, *args, **kwargs)
         return wrapper
     return decorator
 
@@ -153,9 +140,6 @@ def retry(
 class CircuitBreaker:
     """
     Implements the Circuit Breaker pattern for handling cascading failures.
-    
-    FROM: Failure handling patterns from the original codebase.
-    RESPONSIBILITY: Prevents cascading failures by temporarily disabling failing operations.
     """
 
     def __init__(
@@ -167,12 +151,6 @@ class CircuitBreaker:
     ):
         """
         Initializes the circuit breaker.
-        
-        Args:
-            failure_threshold: Number of failures before opening the circuit
-            timeout: Time in seconds before attempting to close the circuit
-            expected_exception: Exception type that counts as a failure
-            logger: Logger instance
         """
         self.failure_threshold = failure_threshold
         self.timeout = timeout
@@ -180,29 +158,35 @@ class CircuitBreaker:
         self.logger = logger
         self.failure_count = 0
         self.last_failure_time: Optional[float] = None
-        self.state = "closed"  # closed, open, half-open
-        # TODO (AI): Initialize other required class members.
+        self.state = "closed"
 
     def call(self, func: Callable[..., Any], *args, **kwargs) -> Any:
         """
         Executes a function through the circuit breaker.
-        
-        Args:
-            func: Function to execute
-            *args: Positional arguments
-            **kwargs: Keyword arguments
-            
-        Returns:
-            Function result if successful
-            
-        Raises:
-            CircuitBreakerOpenError: If the circuit is open
-            
-        # TODO (AI): Implement circuit breaker call logic.
         """
-        # pass
+        if self.state == "open":
+            if time.time() - self.last_failure_time > self.timeout:
+                self.state = "half-open"
+            else:
+                raise CircuitBreakerOpenError("Circuit breaker is open.")
 
-    # TODO (AI): Add additional methods for circuit breaker state management
-    #            (reset, _should_attempt_reset, etc.)
+        try:
+            result = func(*args, **kwargs)
+            self.reset()
+            return result
+        except self.expected_exception as e:
+            self.failure_count += 1
+            if self.failure_count >= self.failure_threshold:
+                self.state = "open"
+                self.last_failure_time = time.time()
+                if self.logger:
+                    self.logger.error("Circuit breaker opened.", {"threshold": self.failure_threshold})
+            raise e
 
-# TODO (AI): Add additional utility functions as needed for retry and resilience patterns.
+    def reset(self):
+        """Resets the circuit breaker to a closed state."""
+        self.state = "closed"
+        self.failure_count = 0
+        self.last_failure_time = None
+        if self.logger:
+            self.logger.info("Circuit breaker reset to closed state.")

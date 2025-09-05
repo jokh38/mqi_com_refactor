@@ -3,7 +3,7 @@
 # Source Reference: src/workflow_manager.py, src/worker.py
 # =====================================================================================
 
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from pathlib import Path
 
 from src.repositories.case_repo import CaseRepository
@@ -12,7 +12,7 @@ from src.handlers.local_handler import LocalHandler
 from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
 from src.domain.enums import CaseStatus
-from src.domain.states import WorkflowState
+from src.domain.states import WorkflowState, InitialState
 
 
 class WorkflowManager:
@@ -44,8 +44,8 @@ class WorkflowManager:
         self.logger = logger
         self.case_id = case_id
         self.case_path = case_path
-        self.current_state: Optional[WorkflowState] = None
-        # TODO (AI): Initialize other required class members.
+        self.current_state: Optional[WorkflowState] = InitialState()
+        self.shared_context: Dict[str, Any] = {}
 
     def run_workflow(self) -> None:
         """
@@ -56,26 +56,58 @@ class WorkflowManager:
         - Use State pattern for workflow execution
         - Handle state transitions using the injected repositories and handlers
         - Ensure proper error handling and logging throughout the workflow
-        # TODO (AI): Implement the workflow execution logic using state transitions.
         """
-        # pass
+        self.logger.info(f"Starting workflow for case: {self.case_id}")
+
+        while self.current_state:
+            state_name = self.current_state.get_state_name()
+            self.logger.info(f"Executing state: {state_name}")
+
+            try:
+                next_state = self.current_state.execute(self)
+                self._transition_to_next_state(next_state)
+            except Exception as e:
+                self._handle_workflow_error(e, f"Error during state: {state_name}")
+                break
+
+        self.logger.info(f"Workflow finished for case: {self.case_id}")
 
     def _transition_to_next_state(self, next_state: WorkflowState) -> None:
         """
         Handles transition from current state to the next state.
-        
-        # TODO (AI): Implement state transition logic.
         """
-        # pass
+        if next_state:
+            self.logger.info(f"Transitioning from {self.current_state.get_state_name()} to {next_state.get_state_name()}")
+        else:
+            self.logger.info(f"Transitioning from {self.current_state.get_state_name()} to None (workflow end)")
+
+        self.current_state = next_state
 
     def _handle_workflow_error(self, error: Exception, context: str) -> None:
         """
         Handles errors that occur during workflow execution.
-        
-        # TODO (AI): Implement error handling logic with rich context.
         """
-        # pass
+        self.logger.error(
+            "Workflow error occurred",
+            {
+                "case_id": self.case_id,
+                "context": context,
+                "error": str(error),
+                "error_type": type(error).__name__,
+                "current_state": self.current_state.get_state_name() if self.current_state else "None"
+            }
+        )
 
-    # TODO (AI): Add additional methods as needed based on the original workflow logic
-    #            from `workflow_manager.py` and `worker.py`. Each method should clearly
-    #            state its source and purpose in comments.
+        try:
+            self.case_repo.update_case_status(self.case_id, CaseStatus.FAILED)
+            self.logger.info(f"Case status updated to FAILED for case: {self.case_id}")
+        except Exception as db_error:
+            self.logger.error(
+                "Failed to update case status during error handling",
+                {
+                    "case_id": self.case_id,
+                    "db_error": str(db_error)
+                }
+            )
+
+        self.current_state = None # Stop the workflow
