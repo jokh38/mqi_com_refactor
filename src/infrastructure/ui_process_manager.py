@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 from pathlib import Path
 
 from src.infrastructure.logging_handler import StructuredLogger
-from src.config.settings import Config
+from src.config.settings import Settings
 
 
 class UIProcessManager:
@@ -24,8 +24,7 @@ class UIProcessManager:
     console window handling on Windows systems.
     """
     
-    def __init__(self, database_path: str, config: Optional[Config] = None, 
-                 logger: Optional[StructuredLogger] = None):
+    def __init__(self, database_path: str, config: Settings, logger: StructuredLogger):
         """
         Initializes the UIProcessManager.
         
@@ -71,10 +70,7 @@ class UIProcessManager:
             self._process = subprocess.Popen(
                 command,
                 creationflags=creation_flags,
-                cwd=self.project_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
+                cwd=self.project_root
             )
             
             # Give the process a moment to start
@@ -90,12 +86,9 @@ class UIProcessManager:
                 return True
             else:
                 # Process failed to start
-                stdout, stderr = self._process.communicate()
                 if self.logger:
                     self.logger.error("UI process failed to start", {
-                        "return_code": self._process.returncode,
-                        "stdout": stdout,
-                        "stderr": stderr
+                        "return_code": self._process.returncode
                     })
                 self._process = None
                 return False
