@@ -67,6 +67,7 @@ def test_plain_text_logging(plain_log_config: LoggingConfig):
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
 
+    # Use the logger's handler list
     logger.logger.handlers = [handler]
 
     logger.info("This is an info message.")

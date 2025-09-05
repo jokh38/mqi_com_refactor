@@ -1,7 +1,3 @@
-# =====================================================================================
-# Target File: src/infrastructure/gpu_monitor.py
-# Source Reference: src/database_handler.py (nvidia-smi parsing logic)
-# =====================================================================================
 import subprocess
 import csv
 import time
