@@ -9,7 +9,8 @@ from datetime import datetime
 from src.repositories.case_repo import CaseRepository
 from src.repositories.gpu_repo import GpuRepository
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.enums import CaseStatus
+from src.domain.models import CaseData, GpuResource
+from src.domain.enums import CaseStatus, GpuStatus
 
 
 class DashboardDataProvider:
@@ -28,112 +29,108 @@ class DashboardDataProvider:
         self.gpu_repo = gpu_repo
         self.logger = logger
         self._last_update: Optional[datetime] = None
-        # TODO (AI): Initialize other required class members.
+        self._system_stats: Dict[str, Any] = {}
+        self._gpu_data: List[Dict[str, Any]] = []
+        self._active_cases: List[Dict[str, Any]] = []
 
     def get_system_stats(self) -> Dict[str, Any]:
         """
-        Fetches and returns system-level statistics.
-        
-        FROM: System stats fetching logic from `display_handler.py`.
-        
-        Returns:
-            Dict containing system statistics like total cases, active cases, etc.
-            
-        # TODO (AI): Implement system stats fetching logic using repositories.
+        Returns the latest system-level statistics.
         """
-        # pass
+        return self._system_stats
 
     def get_gpu_data(self) -> List[Dict[str, Any]]:
         """
-        Fetches and returns GPU resource data.
-        
-        FROM: GPU data fetching logic from the `_refresh_*` methods in `display_handler.py`.
-        
-        Returns:
-            List of dictionaries containing GPU resource information
-            
-        # TODO (AI): Implement GPU data fetching using gpu_repo.
+        Returns the latest GPU resource data.
         """
-        # pass
+        return self._gpu_data
 
     def get_active_cases_data(self) -> List[Dict[str, Any]]:
         """
-        Fetches and returns data for active cases.
-        
-        FROM: Active cases data fetching logic from `display_handler.py`.
-        
-        Returns:
-            List of dictionaries containing active case information
-            
-        # TODO (AI): Implement active cases data fetching using case_repo.
+        Returns the latest data for active cases.
         """
-        # pass
-
-    def get_dashboard_summary(self) -> Dict[str, Any]:
-        """
-        Fetches and returns a complete summary for the dashboard.
-        
-        Returns:
-            Dict containing all dashboard data (system stats, GPU data, cases data)
-            
-        # TODO (AI): Implement complete dashboard data aggregation.
-        """
-        # pass
-
-    def _calculate_system_metrics(self) -> Dict[str, int]:
-        """
-        Calculates derived system metrics from repository data.
-        
-        FROM: Metrics calculation logic from `display_handler.py`.
-        
-        Returns:
-            Dict containing calculated metrics
-            
-        # TODO (AI): Implement system metrics calculation.
-        """
-        # pass
-
-    def _process_case_data(self, raw_cases: List[Any]) -> List[Dict[str, Any]]:
-        """
-        Processes raw case data into a format suitable for display.
-        
-        FROM: Case data processing logic from `display_handler.py`.
-        
-        Args:
-            raw_cases: Raw case data from repository
-            
-        Returns:
-            List of processed case dictionaries
-            
-        # TODO (AI): Implement case data processing.
-        """
-        # pass
-
-    def _process_gpu_data(self, raw_gpu_data: List[Any]) -> List[Dict[str, Any]]:
-        """
-        Processes raw GPU data into a format suitable for display.
-        
-        FROM: GPU data processing logic from `display_handler.py`.
-        
-        Args:
-            raw_gpu_data: Raw GPU data from repository
-            
-        Returns:
-            List of processed GPU dictionaries
-            
-        # TODO (AI): Implement GPU data processing.
-        """
-        # pass
+        return self._active_cases
 
     def refresh_all_data(self) -> None:
         """
-        Triggers a refresh of all cached data.
-        
-        # TODO (AI): Implement data refresh logic.
+        Triggers a refresh of all data by fetching from repositories and processing it.
         """
-        self._last_update = datetime.now()
-        # pass
+        try:
+            self.logger.info("Refreshing all dashboard data")
 
-    # TODO (AI): Add additional methods as needed based on the original data fetching
-    #            logic from `display_handler.py`. Each method should clearly state its
-    #            source and purpose in comments.
+            # Fetch raw data
+            raw_gpus = self.gpu_repo.get_all_gpu_resources()
+            raw_cases = self.case_repo.get_all_active_cases()
+
+            # Process data
+            self._gpu_data = self._process_gpu_data(raw_gpus)
+            self._active_cases = self._process_case_data(raw_cases)
+            self._system_stats = self._calculate_system_metrics(raw_cases, raw_gpus)
+
+            self._last_update = datetime.now()
+
+        except Exception as e:
+            self.logger.error("Failed to refresh dashboard data", {"error": str(e)})
+            # In case of error, clear data to avoid displaying stale info
+            self._system_stats = {}
+            self._gpu_data = []
+            self._active_cases = []
+
+
+    def _calculate_system_metrics(self, cases: List[CaseData], gpus: List[GpuResource]) -> Dict[str, Any]:
+        """
+        Calculates derived system metrics from raw repository data.
+        """
+        total_gpus = len(gpus)
+        available_gpus = sum(1 for gpu in gpus if gpu.status == GpuStatus.IDLE)
+        
+        # Initialize all possible statuses to ensure they exist in the dictionary
+        status_counts = {status: 0 for status in CaseStatus}
+
+        for case in cases:
+            if case.status in status_counts:
+                status_counts[case.status] += 1
+            
+        return {
+            "total_cases": len(cases),
+            "pending": status_counts.get(CaseStatus.PENDING, 0),
+            "preprocessing": status_counts.get(CaseStatus.PREPROCESSING, 0),
+            "processing": status_counts.get(CaseStatus.PROCESSING, 0),
+            "postprocessing": status_counts.get(CaseStatus.POSTPROCESSING, 0),
+            "total_gpus": total_gpus,
+            "available_gpus": available_gpus,
+            "last_update": self._last_update
+        }
+
+    def _process_case_data(self, raw_cases: List[CaseData]) -> List[Dict[str, Any]]:
+        """
+        Processes raw case data into a format suitable for display.
+        """
+        processed_cases = []
+        for case in raw_cases:
+            processed_cases.append({
+                "case_id": case.case_id,
+                "status": case.status,
+                "progress": case.progress,
+                "assigned_gpu": case.assigned_gpu,
+                "elapsed_time": (datetime.now() - case.created_at).total_seconds() if case.created_at else 0
+            })
+        return processed_cases
+
+    def _process_gpu_data(self, raw_gpu_data: List[GpuResource]) -> List[Dict[str, Any]]:
+        """
+        Processes raw GPU data into a format suitable for display.
+        """
+        processed_gpus = []
+        for gpu in raw_gpu_data:
+            processed_gpus.append({
+                "uuid": gpu.uuid,
+                "name": gpu.name,
+                "status": gpu.status,
+                "assigned_case": gpu.assigned_case,
+                "memory_used": gpu.memory_used,
+                "memory_total": gpu.memory_total,
+                "utilization": gpu.utilization,
+                "temperature": gpu.temperature
+            })
+        return processed_gpus

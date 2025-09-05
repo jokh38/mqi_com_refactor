@@ -157,7 +157,7 @@ class RemoteHandler:
             return True
         
         try:
-            return self.retry_policy.execute_with_retry(
+            return self.retry_policy.execute(
                 upload_attempt,
                 operation_name="case_upload",
                 context={"case_id": case_id}
@@ -218,7 +218,7 @@ class RemoteHandler:
             )
         
         try:
-            result = self.retry_policy.execute_with_retry(
+            result = self.retry_policy.execute(
                 execute_attempt,
                 operation_name="remote_command",
                 context={"case_id": case_id, "command": command}
@@ -299,7 +299,7 @@ class RemoteHandler:
             return True
         
         try:
-            return self.retry_policy.execute_with_retry(
+            return self.retry_policy.execute(
                 download_attempt,
                 operation_name="results_download",
                 context={"case_id": case_id}

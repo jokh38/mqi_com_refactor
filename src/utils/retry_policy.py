@@ -145,7 +145,7 @@ def retry(
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
             # TODO (AI): Implement decorator wrapper logic using RetryPolicy.
-            # pass
+            pass
         return wrapper
     return decorator
 

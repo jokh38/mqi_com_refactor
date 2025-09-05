@@ -10,7 +10,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from src.infrastructure.logging_handler import StructuredLogger
-from src.config.constants import NVIDIA_SMI_COMMAND
+from src.config.constants import NVIDIA_SMI_QUERY_COMMAND
 from src.domain.errors import GpuResourceError
 
 class GpuMonitor:
@@ -88,7 +88,7 @@ class GpuMonitor:
             Raw CSV output from nvidia-smi
         """
         result = subprocess.run(
-            NVIDIA_SMI_COMMAND.split(),
+            NVIDIA_SMI_QUERY_COMMAND.split(),
             capture_output=True,
             text=True,
             timeout=self.timeout,

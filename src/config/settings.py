@@ -66,6 +66,14 @@ class UIConfig:
     enable_colors: bool = True
     show_gpu_details: bool = True
 
+@dataclass
+class HandlerConfig:
+    """
+    Configuration for local and remote command handlers.
+    """
+    command_timeout: int = 300 # seconds
+    ssh_timeout: int = 60 # seconds
+
 class Settings:
     """
     Main configuration class that loads and manages all settings.

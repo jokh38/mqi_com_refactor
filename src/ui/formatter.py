@@ -3,171 +3,88 @@
 # Source Reference: src/display_handler.py
 # =====================================================================================
 
-from typing import Dict, List, Any, Tuple
-from datetime import datetime
+from typing import Dict, Any
+from datetime import timedelta
 
 from rich.text import Text
-from rich.style import Style
 
 from src.domain.enums import CaseStatus, GpuStatus
 
+# Color mappings for different statuses
+CASE_STATUS_COLORS = {
+    CaseStatus.PENDING: "yellow",
+    CaseStatus.PREPROCESSING: "cyan",
+    CaseStatus.PROCESSING: "bold blue",
+    CaseStatus.POSTPROCESSING: "bold magenta",
+    CaseStatus.COMPLETED: "bold green",
+    CaseStatus.FAILED: "bold red",
+}
 
-def format_gpu_status(gpu_data: Dict[str, Any]) -> Text:
-    """
-    Formats GPU status with appropriate colors and styling.
-    
-    FROM: Formatting code embedded within the table creation logic of `display_handler.py`.
-    
-    Args:
-        gpu_data: Dictionary containing GPU information
-        
-    Returns:
-        Text: Rich Text object with formatted GPU status
-        
-    # TODO (AI): Implement GPU status formatting with colors based on status.
-    """
-    # pass
-
-
-def format_case_status(case_data: Dict[str, Any]) -> List[Text]:
-    """
-    Formats case status and related information with appropriate styling.
-    
-    FROM: Formatting code embedded within the table creation logic of `display_handler.py`.
-    
-    Args:
-        case_data: Dictionary containing case information
-        
-    Returns:
-        List[Text]: List of formatted Text objects for case display
-        
-    # TODO (AI): Implement case status formatting with colors and styling.
-    """
-    # pass
+GPU_STATUS_COLORS = {
+    GpuStatus.IDLE: "green",
+    GpuStatus.ASSIGNED: "yellow",
+    GpuStatus.UNAVAILABLE: "red",
+}
 
 
-def format_memory_usage(memory_used: int, memory_total: int) -> Text:
-    """
-    Formats memory usage with appropriate styling and percentage.
-    
-    FROM: Memory formatting logic from `display_handler.py`.
-    
-    Args:
-        memory_used: Used memory in MB or GB
-        memory_total: Total memory in MB or GB
-        
-    Returns:
-        Text: Formatted memory usage display
-        
-    # TODO (AI): Implement memory usage formatting with percentage and colors.
-    """
-    # pass
+def get_case_status_text(status: CaseStatus) -> Text:
+    """Returns a rich Text object for a case status."""
+    color = CASE_STATUS_COLORS.get(status, "white")
+    return Text(status.value.upper(), style=color)
 
 
-def format_time_duration(start_time: datetime, end_time: datetime = None) -> Text:
-    """
-    Formats time duration with appropriate units and styling.
-    
-    FROM: Time formatting logic from `display_handler.py`.
-    
-    Args:
-        start_time: Start timestamp
-        end_time: End timestamp (defaults to current time if None)
-        
-    Returns:
-        Text: Formatted duration display
-        
-    # TODO (AI): Implement time duration formatting.
-    """
-    # pass
+def get_gpu_status_text(status: GpuStatus) -> Text:
+    """Returns a rich Text object for a GPU status."""
+    color = GPU_STATUS_COLORS.get(status, "white")
+    return Text(status.value.upper(), style=color)
+
+
+def format_memory_usage(used_mb: int, total_mb: int) -> Text:
+    """Formats memory usage like '1024 / 4096 MB'."""
+    return Text(f"{used_mb} / {total_mb} MB", style="white")
+
+
+def format_utilization(utilization: int) -> Text:
+    """Formats utilization with a color based on value."""
+    color = "green"
+    if utilization > 70:
+        color = "yellow"
+    if utilization > 90:
+        color = "red"
+    return Text(f"{utilization}%", style=color)
+
+
+def format_temperature(temp: int) -> Text:
+    """Formats temperature with a color based on value."""
+    color = "green"
+    if temp > 75:
+        color = "yellow"
+    if temp > 85:
+        color = "red"
+    return Text(f"{temp}°C", style=color)
 
 
 def format_progress_bar(progress: float, width: int = 20) -> Text:
-    """
-    Creates a text-based progress bar with styling.
+    """Creates a text-based progress bar."""
+    if progress is None:
+        progress = 0.0
+    filled_width = int(progress / 100 * width)
+    bar = "█" * filled_width + "─" * (width - filled_width)
     
-    FROM: Progress bar creation logic from `display_handler.py`.
-    
-    Args:
-        progress: Progress value between 0.0 and 1.0
-        width: Width of the progress bar in characters
+    color = "yellow"
+    if progress > 30:
+        color = "cyan"
+    if progress > 70:
+        color = "blue"
+    if progress == 100:
+        color = "green"
         
-    Returns:
-        Text: Formatted progress bar
-        
-    # TODO (AI): Implement progress bar formatting.
-    """
-    # pass
+    return Text(f"[{bar}] {progress:.1f}%", style=color)
 
 
-def format_file_size(size_bytes: int) -> str:
-    """
-    Formats file size in human-readable format.
-    
-    FROM: File size formatting logic from `display_handler.py`.
-    
-    Args:
-        size_bytes: Size in bytes
-        
-    Returns:
-        str: Human-readable size string (e.g., "1.5 GB", "256 MB")
-        
-    # TODO (AI): Implement file size formatting.
-    """
-    # pass
-
-
-def get_status_color(status: CaseStatus) -> str:
-    """
-    Returns the appropriate color for a given case status.
-    
-    FROM: Status color logic from `display_handler.py`.
-    
-    Args:
-        status: Case status enum
-        
-    Returns:
-        str: Color name or hex code for the status
-        
-    # TODO (AI): Implement status color mapping.
-    """
-    # pass
-
-
-def get_gpu_status_color(gpu_status: str) -> str:
-    """
-    Returns the appropriate color for a given GPU status.
-    
-    FROM: GPU status color logic from `display_handler.py`.
-    
-    Args:
-        gpu_status: GPU status string
-        
-    Returns:
-        str: Color name or hex code for the status
-        
-    # TODO (AI): Implement GPU status color mapping.
-    """
-    # pass
-
-
-def format_table_row(data: Dict[str, Any], column_formatters: Dict[str, callable]) -> List[Any]:
-    """
-    Formats a table row using specified column formatters.
-    
-    FROM: Table row formatting logic from `display_handler.py`.
-    
-    Args:
-        data: Row data dictionary
-        column_formatters: Dict mapping column names to formatter functions
-        
-    Returns:
-        List: Formatted row data
-        
-    # TODO (AI): Implement generic table row formatting.
-    """
-    # pass
-
-# TODO (AI): Add additional formatting functions as needed based on the original
-#            formatting logic from `display_handler.py`. Each function should be
-#            pure (no side effects) and focused on a specific formatting task.
+def format_elapsed_time(seconds: float) -> str:
+    """Formats elapsed seconds into a human-readable string like '1h 15m 30s'."""
+    if seconds is None:
+        return "N/A"
+    delta = timedelta(seconds=int(seconds))
+    return str(delta)
