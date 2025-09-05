@@ -1,10 +1,7 @@
-# =====================================================================================
-# Target File: src/infrastructure/gpu_monitor.py
-# Source Reference: src/database_handler.py (nvidia-smi parsing logic)
-# =====================================================================================
-
 import subprocess
 import csv
+import time
+import threading
 from io import StringIO
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -12,90 +9,118 @@ from datetime import datetime
 from src.infrastructure.logging_handler import StructuredLogger
 from src.config.constants import NVIDIA_SMI_QUERY_COMMAND
 from src.domain.errors import GpuResourceError
+from src.handlers.remote_handler import RemoteHandler
+from src.repositories.gpu_repo import GpuRepository
 
 class GpuMonitor:
     """
-    Handles GPU resource monitoring and data parsing from nvidia-smi.
+    A long-running service that periodically fetches GPU resource data from a remote
+    host and updates a local repository.
     
     FROM: Extracts the `nvidia-smi` result parsing logic from 
-          `populate_gpu_resources_from_nvidia_smi` in original `database_handler.py`.
-    REFACTORING NOTES: Separates data acquisition from data persistence.
-                      This class only handles parsing, while GpuRepository handles storage.
+          `populate_gpu_resources_from_nvidia_smi` in original `database_handler.py`
+          and combines it with a threaded monitoring loop.
+    REFACTORING NOTES: This class is now a stateful service. It separates data
+                       acquisition (via RemoteHandler) and parsing from data
+                       persistence (via GpuRepository).
     """
     
-    def __init__(self, logger: StructuredLogger, timeout: int = 30):
+    def __init__(self,
+                 logger: StructuredLogger,
+                 remote_handler: RemoteHandler,
+                 gpu_repository: GpuRepository,
+                 update_interval: int = 60):
         """
-        Initialize GPU monitor.
+        Initialize the GpuMonitor service.
         
         Args:
-            logger: Logger for recording operations
-            timeout: Command execution timeout in seconds
+            logger: Logger for recording operations.
+            remote_handler: Handler for executing commands on the remote host.
+            gpu_repository: Repository for persisting GPU data.
+            update_interval: Interval in seconds between GPU data fetches.
         """
         self.logger = logger
-        self.timeout = timeout
-    
-    def get_gpu_data(self) -> List[Dict[str, Any]]:
-        """
-        Retrieve and parse current GPU resource data from nvidia-smi.
+        self.remote_handler = remote_handler
+        self.gpu_repository = gpu_repository
+        self.update_interval = update_interval
+
+        self._shutdown_event = threading.Event()
+        self._monitor_thread: Optional[threading.Thread] = None
+
+    def start(self) -> None:
+        """Starts the GPU monitoring service in a background thread."""
+        if self._monitor_thread and self._monitor_thread.is_alive():
+            self.logger.warning("GPU monitor is already running.")
+            return
+
+        self.logger.info("Starting GPU monitoring service.")
+        self._shutdown_event.clear()
+        self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self._monitor_thread.start()
+
+    def stop(self) -> None:
+        """Stops the GPU monitoring service."""
+        if not self._monitor_thread or not self._monitor_thread.is_alive():
+            self.logger.warning("GPU monitor is not running.")
+            return
+
+        self.logger.info("Stopping GPU monitoring service.")
+        self._shutdown_event.set()
+        self._monitor_thread.join(timeout=10) # Wait for thread to finish
         
-        FROM: The CSV parsing logic from `populate_gpu_resources_from_nvidia_smi` 
-              in original `database_handler.py`.
+        if self._monitor_thread.is_alive():
+            self.logger.error("GPU monitor thread did not shut down cleanly.")
+
+    def _monitor_loop(self) -> None:
+        """The main monitoring loop that runs in a separate thread."""
+        self.logger.info("GPU monitor loop started.", {"update_interval": self.update_interval})
+        while not self._shutdown_event.is_set():
+            try:
+                self._fetch_and_update_gpus()
+            except Exception as e:
+                self.logger.error("An error occurred in the GPU monitor loop.", {"error": str(e)})
+
+            # Wait for the next interval, checking for shutdown signal periodically
+            self._shutdown_event.wait(self.update_interval)
         
-        Returns:
-            List of dictionaries containing GPU information
-        """
-        self.logger.debug("Fetching GPU data from nvidia-smi")
+        self.logger.info("GPU monitor loop has shut down.")
+
+    def _fetch_and_update_gpus(self) -> None:
+        """Fetches GPU data from the remote host, parses it, and updates the repository."""
+        self.logger.debug("Attempting to fetch remote GPU data.")
         
         try:
-            # Execute nvidia-smi command
-            raw_output = self._execute_nvidia_smi()
+            # Execute nvidia-smi command remotely
+            result = self.remote_handler.execute_remote_command(
+                case_id="gpu_monitoring", # A generic ID for this operation
+                command=NVIDIA_SMI_QUERY_COMMAND
+            )
+
+            if not result.success:
+                self.logger.error("Remote nvidia-smi command failed", {
+                    "return_code": result.return_code,
+                    "error": result.error
+                })
+                return
+
+            # Parse the CSV output
+            gpu_data = self._parse_nvidia_smi_output(result.output)
             
-            # Parse CSV output
-            gpu_data = self._parse_nvidia_smi_output(raw_output)
-            
-            self.logger.info("GPU data retrieved successfully", {
+            if not gpu_data:
+                self.logger.warning("Nvidia-smi command succeeded but parsing yielded no GPU data.")
+                return
+
+            self.logger.info("Successfully fetched and parsed remote GPU data.", {
                 "gpu_count": len(gpu_data)
             })
-            
-            return gpu_data
-            
-        except subprocess.TimeoutExpired:
-            self.logger.error("nvidia-smi command timed out", {
-                "timeout": self.timeout
-            })
-            raise GpuResourceError(f"nvidia-smi command timed out after {self.timeout} seconds")
-            
-        except subprocess.CalledProcessError as e:
-            self.logger.error("nvidia-smi command failed", {
-                "return_code": e.returncode,
-                "stderr": e.stderr if e.stderr else None
-            })
-            raise GpuResourceError(f"nvidia-smi command failed: {e}")
-            
+
+            # Persist the new data to the repository
+            self.gpu_repository.update_resources(gpu_data)
+
         except Exception as e:
-            self.logger.error("Failed to retrieve GPU data", {
+            self.logger.error("An unexpected error occurred while fetching GPU data.", {
                 "error": str(e)
             })
-            raise GpuResourceError(f"Failed to retrieve GPU data: {e}")
-    
-    def _execute_nvidia_smi(self) -> str:
-        """
-        Execute the nvidia-smi command and return raw output.
-        
-        FROM: Command execution logic from original GPU monitoring.
-        
-        Returns:
-            Raw CSV output from nvidia-smi
-        """
-        result = subprocess.run(
-            NVIDIA_SMI_QUERY_COMMAND.split(),
-            capture_output=True,
-            text=True,
-            timeout=self.timeout,
-            check=True
-        )
-        
-        return result.stdout
     
     def _parse_nvidia_smi_output(self, raw_output: str) -> List[Dict[str, Any]]:
         """
@@ -220,7 +245,7 @@ class GpuMonitor:
         # Check utilization range
         if not (0 <= gpu_info['utilization'] <= 100):
             raise ValueError(f"Invalid utilization: {gpu_info['utilization']}%")
-    
+
     def check_nvidia_smi_available(self) -> bool:
         """
         Check if nvidia-smi command is available and working.

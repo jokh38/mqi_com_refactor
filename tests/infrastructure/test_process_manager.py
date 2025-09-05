@@ -1,113 +1,145 @@
 import pytest
-from unittest.mock import MagicMock, patch, ANY
 import subprocess
+from unittest.mock import MagicMock
+from pathlib import Path
 from concurrent.futures import Future
 
-from src.infrastructure.process_manager import ProcessManager, CommandExecutor
+from src.infrastructure.process_manager import ProcessManager, CommandExecutor, ProcessingError
 from src.config.settings import ProcessingConfig
-from src.domain.errors import ProcessingError
+from src.infrastructure.logging_handler import LoggerFactory, LoggingConfig
+
+@pytest.fixture(scope="module")
+def logger():
+    """Provides a configured logger for tests."""
+    # Ensure LoggerFactory is configured for the tests
+    log_config = LoggingConfig(log_level="DEBUG")
+    LoggerFactory.configure(log_config)
+    return LoggerFactory.get_logger("test_process_manager")
 
 @pytest.fixture
-def mock_logger():
-    return MagicMock()
+def command_executor(logger):
+    """Fixture to create a CommandExecutor instance."""
+    return CommandExecutor(logger=logger, default_timeout=10)
 
 @pytest.fixture
 def processing_config():
+    """Fixture for a ProcessingConfig instance."""
     return ProcessingConfig(max_workers=4)
 
+# --- Tests for CommandExecutor ---
+
+def test_execute_command_success(command_executor, mocker):
+    """Test successful command execution."""
+    mock_run = mocker.patch('subprocess.run', return_value=MagicMock(
+        returncode=0, stdout="Success", stderr=""
+    ))
+    command = ["echo", "hello"]
+    result = command_executor.execute_command(command)
+    mock_run.assert_called_once_with(
+        command,
+        cwd=None,
+        timeout=10,
+        capture_output=True,
+        text=True,
+        env=None,
+        check=True
+    )
+    assert result.returncode == 0
+    assert result.stdout == "Success"
+
+def test_execute_command_timeout(command_executor, mocker):
+    """Test that ProcessingError is raised on command timeout."""
+    mocker.patch('subprocess.run', side_effect=subprocess.TimeoutExpired(cmd="sleep 15", timeout=10))
+    with pytest.raises(ProcessingError, match="Command timed out"):
+        command_executor.execute_command(["sleep", "15"])
+
+def test_execute_command_failure(command_executor, mocker):
+    """Test that ProcessingError is raised on command failure."""
+    mocker.patch('subprocess.run', side_effect=subprocess.CalledProcessError(
+        returncode=1, cmd="ls /nonexistent", stderr="No such file or directory"
+    ))
+    with pytest.raises(ProcessingError, match="Command failed with code 1"):
+        command_executor.execute_command(["ls", "/nonexistent"])
+
+def test_execute_command_async(command_executor, mocker):
+    """Test asynchronous command execution."""
+    mock_popen = mocker.patch('subprocess.Popen')
+    command = ["./run_script.sh"]
+    command_executor.execute_command_async(command)
+    mock_popen.assert_called_once_with(
+        command,
+        cwd=None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=None
+    )
+
+# --- Tests for ProcessManager ---
+
 @pytest.fixture
-def command_executor(mock_logger):
-    return CommandExecutor(logger=mock_logger, default_timeout=10)
+def process_manager(processing_config, logger):
+    """Fixture to create a ProcessManager instance."""
+    pm = ProcessManager(config=processing_config, logger=logger)
+    return pm
 
-class TestProcessManager:
-    @patch("src.infrastructure.process_manager.ProcessPoolExecutor")
-    def test_start_and_shutdown(self, mock_executor_cls, processing_config, mock_logger):
-        """Test that the process manager starts and shuts down the executor."""
-        manager = ProcessManager(config=processing_config, logger=mock_logger)
-        manager.start()
-        assert mock_executor_cls.called
+def dummy_worker_func(case_id, case_path):
+    """A dummy function for testing process submission."""
+    return f"Processed {case_id}"
 
-        mock_executor_instance = mock_executor_cls.return_value
-        manager.shutdown()
-        mock_executor_instance.shutdown.assert_called_once_with(wait=True)
+def test_process_manager_start_and_shutdown(process_manager, mocker):
+    """Test starting and shutting down the process manager."""
+    mock_pool_executor = MagicMock()
+    mocker.patch('src.infrastructure.process_manager.ProcessPoolExecutor', return_value=mock_pool_executor)
+    assert process_manager._executor is None
+    process_manager.start()
+    assert process_manager._executor is mock_pool_executor
+    process_manager.shutdown(wait=True)
+    mock_pool_executor.shutdown.assert_called_once_with(wait=True)
+    assert process_manager._executor is None
 
-    @patch("src.infrastructure.process_manager.ProcessPoolExecutor")
-    def test_submit_case_processing(self, mock_executor_cls, processing_config, mock_logger):
-        """Test submitting a case to the process pool."""
-        manager = ProcessManager(config=processing_config, logger=mock_logger)
-        manager.start()
+def test_submit_case_processing(process_manager, mocker):
+    """Test submitting a case for processing."""
+    mock_pool_executor = MagicMock()
+    mocker.patch('src.infrastructure.process_manager.ProcessPoolExecutor', return_value=mock_pool_executor)
+    process_manager.start()
+    mock_future = Future()
+    mock_pool_executor.submit.return_value = mock_future
+    case_id = "case123"
+    case_path = Path("/tmp/case123")
+    process_id = process_manager.submit_case_processing(dummy_worker_func, case_id, case_path)
+    assert process_id.startswith(f"case_{case_id}")
+    mock_pool_executor.submit.assert_called_once_with(dummy_worker_func, case_id, case_path)
+    assert process_manager.get_active_process_count() == 1
+    assert len(mock_future._done_callbacks) == 1
 
-        mock_executor = mock_executor_cls.return_value
-        mock_future = Future()
-        mock_executor.submit.return_value = mock_future
+def test_process_completion_callback_success(process_manager, mocker):
+    """Test the callback for a successfully completed process."""
+    mocker.patch('src.infrastructure.process_manager.ProcessPoolExecutor')
+    process_manager.start()
+    mock_future = Future()
+    mock_future.set_result("Success!")
+    process_manager._active_processes['proc1'] = mock_future
+    process_manager._process_completed('proc1', mock_future)
+    assert process_manager.get_active_process_count() == 0
 
-        worker_func = MagicMock()
-        case_id = "case123"
-        case_path = "/path/to/case"
+def test_process_completion_callback_failure(process_manager, mocker):
+    """Test the callback for a failed process."""
+    mocker.patch('src.infrastructure.process_manager.ProcessPoolExecutor')
+    process_manager.start()
+    mock_future = Future()
+    mock_future.set_exception(ValueError("Something went wrong"))
+    process_manager._active_processes['proc1'] = mock_future
+    process_manager._process_completed('proc1', mock_future)
+    assert process_manager.get_active_process_count() == 0
 
-        process_id = manager.submit_case_processing(worker_func, case_id, case_path)
-
-        assert process_id.startswith(f"case_{case_id}")
-        mock_executor.submit.assert_called_once_with(worker_func, case_id, case_path)
-        assert manager.is_process_active(process_id)
-
-    @patch("src.infrastructure.process_manager.ProcessPoolExecutor")
-    def test_process_completion_callback(self, mock_executor_cls, processing_config, mock_logger):
-        """Test the callback function for process completion."""
-        manager = ProcessManager(config=processing_config, logger=mock_logger)
-        manager.start()
-
-        # Simulate submitting a process
-        mock_executor = mock_executor_cls.return_value
-        future = Future()
-        mock_executor.submit.return_value = future
-        process_id = manager.submit_case_processing(MagicMock(), "case123", "/path")
-
-        # Simulate successful completion
-        future.set_result("Success")
-        manager._process_completed(process_id, future)
-
-        mock_logger.info.assert_called_with("Process completed successfully", ANY)
-        assert not manager.is_process_active(process_id)
-
-
-class TestCommandExecutor:
-    @patch("subprocess.run")
-    def test_execute_command_success(self, mock_run, command_executor):
-        """Test successful command execution."""
-        mock_run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout="output")
-        result = command_executor.execute_command(["ls", "-l"])
-
-        assert result.returncode == 0
-        assert result.stdout == "output"
-        mock_run.assert_called_once()
-
-    @patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="test", timeout=10))
-    def test_execute_command_timeout(self, mock_run, command_executor):
-        """Test command timeout raises ProcessingError."""
-        with pytest.raises(ProcessingError, match="timed out"):
-            command_executor.execute_command(["sleep", "20"])
-
-    @patch("subprocess.run", side_effect=subprocess.CalledProcessError(returncode=1, cmd="test"))
-    def test_execute_command_error(self, mock_run, command_executor):
-        """Test command failure raises ProcessingError."""
-        with pytest.raises(ProcessingError, match="failed"):
-            command_executor.execute_command(["invalid-command"])
-
-    @patch("subprocess.Popen")
-    def test_execute_command_async(self, mock_popen, command_executor):
-        """Test asynchronous command execution."""
-        mock_process = MagicMock()
-        mock_popen.return_value = mock_process
-
-        process = command_executor.execute_command_async(["./long_script.sh"])
-
-        assert process is mock_process
-        mock_popen.assert_called_once_with(
-            ["./long_script.sh"],
-            cwd=None,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=None
-        )
+def test_submit_to_stopped_manager_raises_error(process_manager, mocker):
+    """Test that submitting a task to a stopped manager raises a RuntimeError."""
+    with pytest.raises(RuntimeError, match="Process manager not started"):
+        process_manager.submit_case_processing(dummy_worker_func, "case1", Path("/tmp"))
+    mock_pool_executor = MagicMock()
+    mocker.patch('src.infrastructure.process_manager.ProcessPoolExecutor', return_value=mock_pool_executor)
+    process_manager.start()
+    process_manager.shutdown(wait=False)
+    with pytest.raises(RuntimeError, match="Process manager not started"):
+        process_manager.submit_case_processing(dummy_worker_func, "case2", Path("/tmp"))

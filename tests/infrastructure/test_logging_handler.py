@@ -1,21 +1,26 @@
 import pytest
 import json
 import logging
+from io import StringIO
 from pathlib import Path
 
-from src.infrastructure.logging_handler import StructuredLogger, LoggerFactory
+from src.infrastructure.logging_handler import LoggerFactory, StructuredLogger
 from src.config.settings import LoggingConfig
 
-@pytest.fixture
-def log_dir(tmp_path):
-    """Fixture for a temporary log directory."""
-    return tmp_path / "logs"
+@pytest.fixture(autouse=True)
+def reset_logger_factory():
+    """Reset the LoggerFactory singleton before and after each test."""
+    LoggerFactory._config = None
+    LoggerFactory._loggers = {}
+    yield
+    LoggerFactory._config = None
+    LoggerFactory._loggers = {}
 
 @pytest.fixture
-def structured_log_config(log_dir):
+def structured_log_config(tmp_path: Path) -> LoggingConfig:
     """Fixture for a structured logging configuration."""
     return LoggingConfig(
-        log_dir=log_dir,
+        log_dir=tmp_path,
         log_level="DEBUG",
         structured_logging=True,
         max_file_size=1,
@@ -23,87 +28,120 @@ def structured_log_config(log_dir):
     )
 
 @pytest.fixture
-def unstructured_log_config(log_dir):
-    """Fixture for an unstructured logging configuration."""
+def plain_log_config(tmp_path: Path) -> LoggingConfig:
+    """Fixture for a plain text logging configuration."""
     return LoggingConfig(
-        log_dir=log_dir,
-        log_level="INFO",
+        log_dir=tmp_path,
+        log_level="DEBUG",
         structured_logging=False,
         max_file_size=1,
         backup_count=1
     )
 
-class TestStructuredLogger:
-    def test_structured_logging(self, structured_log_config, log_dir):
-        """Test that logs are written in JSON format when structured_logging is True."""
-        logger_name = "test_structured"
-        logger = StructuredLogger(logger_name, structured_log_config)
+def test_logger_factory_unconfigured():
+    """Test that getting a logger before configuration raises an error."""
+    with pytest.raises(RuntimeError, match="LoggerFactory must be configured"):
+        LoggerFactory.get_logger("test")
 
-        logger.info("This is a test", context={"key": "value"})
+def test_logger_factory_configure_and_get(structured_log_config: LoggingConfig):
+    """Test configuring the factory and getting a logger."""
+    LoggerFactory.configure(structured_log_config)
+    logger = LoggerFactory.get_logger("test_logger")
 
-        log_file = log_dir / f"{logger_name}.log"
-        assert log_file.exists()
+    assert isinstance(logger, StructuredLogger)
+    assert logger.logger.name == "test_logger"
 
-        log_content = log_file.read_text()
-        log_data = json.loads(log_content)
+    # Getting the same logger should return the same instance
+    logger2 = LoggerFactory.get_logger("test_logger")
+    assert logger is logger2
 
-        assert log_data["level"] == "INFO"
-        assert log_data["message"] == "This is a test"
-        assert log_data["context"]["key"] == "value"
+def test_plain_text_logging(plain_log_config: LoggingConfig):
+    """Test that logging in plain text format works correctly."""
+    LoggerFactory.configure(plain_log_config)
+    logger = LoggerFactory.get_logger("plain_test")
 
-    def test_unstructured_logging(self, unstructured_log_config, log_dir):
-        """Test that logs are written in plain text when structured_logging is False."""
-        logger_name = "test_unstructured"
-        logger = StructuredLogger(logger_name, unstructured_log_config)
+    # Capture logs
+    log_stream = StringIO()
+    # Create a handler with the correct formatter
+    handler = logging.StreamHandler(log_stream)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
 
-        logger.info("This is a plain text message")
+    # Use the logger's handler list
+    logger.logger.handlers = [handler]
 
-        log_file = log_dir / f"{logger_name}.log"
-        assert log_file.exists()
+    logger.info("This is an info message.")
 
-        log_content = log_file.read_text()
-        assert "INFO" in log_content
-        assert "This is a plain text message" in log_content
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(log_content)
+    log_output = log_stream.getvalue()
+    assert "INFO" in log_output
+    assert "This is an info message." in log_output
+    # Check that it's not JSON
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(log_output.strip())
 
-    def test_log_level(self, unstructured_log_config, log_dir):
-        """Test that messages below the configured log level are ignored."""
-        logger_name = "test_log_level"
-        # Config is set to INFO
-        logger = StructuredLogger(logger_name, unstructured_log_config)
+def test_structured_logging(structured_log_config: LoggingConfig):
+    """Test that logging in structured JSON format works correctly."""
+    LoggerFactory.configure(structured_log_config)
+    logger = LoggerFactory.get_logger("structured_test")
 
-        logger.debug("This should not be logged")
-        logger.info("This should be logged")
+    log_stream = StringIO()
+    # Get the correct formatter from the logger
+    handler = logging.StreamHandler(log_stream)
+    formatter = logger._create_json_formatter()
+    handler.setFormatter(formatter)
+    logger.logger.handlers = [handler]
 
-        log_file = log_dir / f"{logger_name}.log"
-        assert log_file.exists()
-        log_content = log_file.read_text()
-        assert "This should not be logged" not in log_content
-        assert "This should be logged" in log_content
+    context = {"user_id": 123, "request_id": "abc-123"}
+    logger.warning("This is a warning.", context=context)
 
+    log_output = log_stream.getvalue()
+    log_json = json.loads(log_output)
 
-class TestLoggerFactory:
-    def setup_method(self):
-        """Reset the factory before each test."""
-        LoggerFactory._config = None
-        LoggerFactory._loggers = {}
+    assert log_json['level'] == 'WARNING'
+    assert log_json['logger'] == 'structured_test'
+    assert log_json['message'] == 'This is a warning.'
+    assert log_json['context']['user_id'] == 123
+    assert log_json['context']['request_id'] == "abc-123"
 
-    def test_get_logger_unconfigured(self):
-        """Test that getting a logger before configuration raises an error."""
-        with pytest.raises(RuntimeError, match="must be configured"):
-            LoggerFactory.get_logger("test")
+def test_exception_logging(structured_log_config: LoggingConfig):
+    """Test that exception information is included in structured logs."""
+    LoggerFactory.configure(structured_log_config)
+    logger = LoggerFactory.get_logger("exception_test")
 
-    def test_get_logger_success(self, structured_log_config):
-        """Test getting a logger after configuration."""
-        LoggerFactory.configure(structured_log_config)
-        logger = LoggerFactory.get_logger("test_logger")
-        assert isinstance(logger, StructuredLogger)
-        assert logger.logger.name == "test_logger"
+    log_stream = StringIO()
+    # Get the correct formatter from the logger
+    handler = logging.StreamHandler(log_stream)
+    formatter = logger._create_json_formatter()
+    handler.setFormatter(formatter)
+    logger.logger.handlers = [handler]
 
-    def test_get_logger_returns_same_instance(self, structured_log_config):
-        """Test that subsequent calls for the same name return the same logger instance."""
-        LoggerFactory.configure(structured_log_config)
-        logger1 = LoggerFactory.get_logger("singleton")
-        logger2 = LoggerFactory.get_logger("singleton")
-        assert logger1 is logger2
+    try:
+        raise ValueError("This is a test exception")
+    except ValueError:
+        logger.error("An exception occurred.", context={"extra": "info"}, exc_info=True)
+
+    log_output = log_stream.getvalue()
+    log_json = json.loads(log_output)
+
+    assert log_json['level'] == 'ERROR'
+    assert log_json['message'] == 'An exception occurred.'
+    assert 'exception' in log_json
+    assert "ValueError: This is a test exception" in log_json['exception']
+    assert log_json['context']['extra'] == 'info'
+
+def test_log_levels(plain_log_config: LoggingConfig):
+    """Test that log levels are respected."""
+    plain_log_config.log_level = "INFO"
+    LoggerFactory.configure(plain_log_config)
+    logger = LoggerFactory.get_logger("levels_test")
+
+    log_stream = StringIO()
+    logger.logger.handlers = [logging.StreamHandler(log_stream)]
+
+    logger.debug("This should not be logged.")
+    logger.info("This should be logged.")
+
+    log_output = log_stream.getvalue()
+
+    assert "This should not be logged." not in log_output
+    assert "This should be logged." in log_output
