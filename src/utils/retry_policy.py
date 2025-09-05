@@ -9,7 +9,7 @@ from functools import wraps
 from enum import Enum
 
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.errors import RetryableError
+from src.domain.errors import RetryableError, CircuitBreakerOpenError
 
 
 class RetryStrategy(Enum):
@@ -131,8 +131,13 @@ def retry(
     def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
         @wraps(func)
         def wrapper(*args, **kwargs) -> Any:
-            policy = RetryPolicy(max_attempts, base_delay, strategy, retryable_exceptions)
-            return policy.execute(func, *args, **kwargs)
+            policy = RetryPolicy(
+                max_attempts=max_attempts,
+                base_delay=base_delay,
+                strategy=strategy,
+                retryable_exceptions=retryable_exceptions
+            )
+            return policy.execute(lambda: func(*args, **kwargs))
         return wrapper
     return decorator
 

@@ -10,7 +10,7 @@ import tempfile
 import shutil
 
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.errors import PathValidationError
+from src.domain.errors import ValidationError
 
 
 class PathManager:
@@ -30,9 +30,9 @@ class PathManager:
         """
         path = Path(case_path)
         if not path.exists():
-            raise PathValidationError(f"Case path does not exist: {path}")
+            raise ValidationError(f"Case path does not exist: {path}")
         if not path.is_dir():
-            raise PathValidationError(f"Case path is not a directory: {path}")
+            raise ValidationError(f"Case path is not a directory: {path}")
         return path
 
     def ensure_directory_exists(self, directory_path: Union[str, Path]) -> Path:
@@ -45,7 +45,7 @@ class PathManager:
             self._log_path_operation("ensure_directory", path)
             return path
         except OSError as e:
-            raise PathValidationError(f"Failed to create directory: {path}") from e
+            raise ValidationError(f"Failed to create directory: {path}") from e
 
     def get_temp_directory(self, prefix: str = "mqi_temp") -> Path:
         """
@@ -77,7 +77,7 @@ class PathManager:
         try:
             return os.path.getsize(file_path)
         except FileNotFoundError as e:
-            raise PathValidationError(f"File not found: {file_path}") from e
+            raise ValidationError(f"File not found: {file_path}") from e
 
     def is_directory_writable(self, directory_path: Union[str, Path]) -> bool:
         """
@@ -99,7 +99,7 @@ class PathManager:
             shutil.copy2(source, destination)
             self._log_path_operation("copy_file", source)
         except (shutil.Error, IOError) as e:
-            raise PathValidationError(f"Failed to copy file from {source} to {destination}") from e
+            raise ValidationError(f"Failed to copy file from {source} to {destination}") from e
 
     def safe_move_file(self, source: Union[str, Path], destination: Union[str, Path]) -> None:
         """
@@ -109,7 +109,7 @@ class PathManager:
             shutil.move(str(source), str(destination))
             self._log_path_operation("move_file", source)
         except (shutil.Error, IOError) as e:
-            raise PathValidationError(f"Failed to move file from {source} to {destination}") from e
+            raise ValidationError(f"Failed to move file from {source} to {destination}") from e
 
     def get_case_metadata(self, case_path: Path) -> Dict[str, Any]:
         """
