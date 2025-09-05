@@ -20,6 +20,9 @@ class DatabaseConfig:
     journal_mode: str = "WAL"
     synchronous: str = "NORMAL"
     cache_size: int = -2000  # 2MB cache
+    cache_size_mb: int = 2
+    busy_timeout_ms: int = 5000
+    synchronous_mode: str = "NORMAL"
 
 @dataclass
 class ProcessingConfig:
@@ -31,6 +34,12 @@ class ProcessingConfig:
     case_timeout: int = 3600  # 1 hour
     retry_attempts: int = 3
     retry_delay: int = 60  # 1 minute
+    scan_interval_seconds: int = 60
+    polling_interval_seconds: int = 300
+    local_execution_timeout_seconds: int = 300
+    initial_delay_seconds: int = 5
+    max_delay_seconds: int = 60
+    backoff_multiplier: float = 2.0
 
 @dataclass
 class GpuConfig:
@@ -42,6 +51,7 @@ class GpuConfig:
     allocation_timeout: int = 300  # 5 minutes
     memory_threshold: float = 0.9  # 90% memory usage threshold
     temperature_threshold: int = 85  # degrees celsius
+    gpu_monitor_command: str = "nvidia-smi"
 
 @dataclass
 class LoggingConfig:
@@ -65,6 +75,7 @@ class UIConfig:
     max_log_entries: int = 100
     enable_colors: bool = True
     show_gpu_details: bool = True
+    auto_start: bool = True
 
 @dataclass
 class HandlerConfig:
@@ -154,10 +165,12 @@ class Settings:
             # Override with YAML values if present
             if 'database' in config_data:
                 db_config = config_data['database']
-                self.database.cache_size_mb = db_config.get('cache_size_mb', self.database.cache_size)
-                self.database.busy_timeout_ms = db_config.get('busy_timeout_ms', 5000)
+                self.database.cache_size_mb = db_config.get('cache_size_mb', self.database.cache_size_mb)
+                self.database.busy_timeout_ms = db_config.get('busy_timeout_ms', self.database.busy_timeout_ms)
                 self.database.journal_mode = db_config.get('journal_mode', self.database.journal_mode)
-                self.database.synchronous_mode = db_config.get('synchronous_mode', self.database.synchronous)
+                self.database.synchronous_mode = db_config.get('synchronous_mode', self.database.synchronous_mode)
+                # Update timeout from busy_timeout_ms
+                self.database.timeout = self.database.busy_timeout_ms / 1000
                 
             if 'application' in config_data:
                 app_config = config_data['application']

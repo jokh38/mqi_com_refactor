@@ -21,7 +21,7 @@ class UploadResult(NamedTuple):
     """Result from file upload operation."""
 
     success: bool
-    error_message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class JobSubmissionResult(NamedTuple):
@@ -29,7 +29,7 @@ class JobSubmissionResult(NamedTuple):
 
     success: bool
     job_id: Optional[str] = None
-    error_message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class JobStatus(NamedTuple):
@@ -46,7 +46,7 @@ class DownloadResult(NamedTuple):
     """Result from file download operation."""
 
     success: bool
-    error_message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class RemoteHandler:
@@ -443,13 +443,13 @@ class RemoteHandler:
 
             if not self._sftp_client:
                 return UploadResult(
-                    success=False, error_message="SFTP client not available"
+                    success=False, error="SFTP client not available"
                 )
 
             if not local_file.exists():
                 return UploadResult(
                     success=False,
-                    error_message=f"Local file does not exist: {local_file}",
+                    error=f"Local file does not exist: {local_file}",
                 )
 
             # Create remote directory if it doesn't exist
@@ -471,7 +471,7 @@ class RemoteHandler:
             self.logger.error(
                 error_msg, {"local_file": str(local_file), "remote_dir": remote_dir}
             )
-            return UploadResult(success=False, error_message=error_msg)
+            return UploadResult(success=False, error=error_msg)
 
     def submit_simulation_job(
         self, case_id: str, remote_case_dir: str, gpu_uuid: str
@@ -516,7 +516,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
             self._ensure_connected()
             if not self._sftp_client:
                 return JobSubmissionResult(
-                    success=False, error_message="SFTP client not available"
+                    success=False, error="SFTP client not available"
                 )
 
             # Upload job script
@@ -530,7 +530,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
             if not result.success:
                 return JobSubmissionResult(
                     success=False,
-                    error_message=f"Job submission failed: {result.error}",
+                    error=f"Job submission failed: {result.error}",
                 )
 
             # Extract job ID from sbatch output
@@ -545,7 +545,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
             if not job_id:
                 return JobSubmissionResult(
                     success=False,
-                    error_message="Could not extract job ID from sbatch output",
+                    error="Could not extract job ID from sbatch output",
                 )
 
             self.logger.info(
@@ -557,7 +557,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
         except Exception as e:
             error_msg = f"Job submission error: {e}"
             self.logger.error(error_msg, {"case_id": case_id})
-            return JobSubmissionResult(success=False, error_message=error_msg)
+            return JobSubmissionResult(success=False, error=error_msg)
 
     def wait_for_job_completion(
         self, job_id: str, timeout_seconds: int = 3600
@@ -685,7 +685,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
 
             if not self._sftp_client:
                 return DownloadResult(
-                    success=False, error_message="SFTP client not available"
+                    success=False, error="SFTP client not available"
                 )
 
             # Ensure local directory exists
@@ -711,7 +711,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
                 error_msg,
                 {"remote_file": remote_file_path, "local_dir": str(local_dir)},
             )
-            return DownloadResult(success=False, error_message=error_msg)
+            return DownloadResult(success=False, error=error_msg)
 
     def cleanup_remote_directory(self, remote_dir: str) -> bool:
         """

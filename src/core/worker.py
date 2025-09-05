@@ -19,7 +19,7 @@ from src.core.workflow_manager import WorkflowManager
 from src.config.settings import Settings, DatabaseConfig, HandlerConfig, LoggingConfig
 
 
-def worker_main(case_id: str, case_path: Path, config_dict: Dict[str, Any]) -> None:
+def worker_main(case_id: str, case_path: Path, settings: Settings) -> None:
     """
     Acts as the "assembly line" that creates all dependency objects for a single case
     and injects them into the WorkflowManager to start the process.
@@ -36,30 +36,29 @@ def worker_main(case_id: str, case_path: Path, config_dict: Dict[str, Any]) -> N
     Args:
         case_id: Unique identifier for the case
         case_path: Path to the case directory
-        config_dict: Configuration dictionary containing all settings
+        settings: Settings object containing all configuration
     """
-    settings = Settings()
-    settings._yaml_config = config_dict
-
-    logging_config = _create_logging_config(config_dict)
-    logger = StructuredLogger(f"worker_{case_id}", config=logging_config)
+    logger = StructuredLogger(f"worker_{case_id}", config=settings.logging)
 
     db_connection = None
     try:
         _validate_case_path(case_path, logger)
 
-        db_config = _create_database_config(config_dict)
+        # Use database path from settings
+        db_path = settings.get_database_path()
         db_connection = DatabaseConnection(
-            db_path=db_config.db_path,
-            config=db_config,
+            db_path=db_path,
+            config=settings.database,
             logger=logger
         )
+        # Initialize database schema
+        db_connection.init_db()
 
         case_repo = CaseRepository(db_connection, logger)
         gpu_repo = GpuRepository(db_connection, logger)
 
-        handler_config = _create_handler_config(config_dict)
-        command_executor = CommandExecutor(logger, handler_config.command_timeout)
+        # Create handler dependencies
+        command_executor = CommandExecutor(logger, settings.processing.local_execution_timeout_seconds)
         retry_policy = RetryPolicy(logger=logger)
 
         local_handler = LocalHandler(settings, logger, command_executor, retry_policy)
@@ -108,54 +107,3 @@ def _validate_case_path(case_path: Path, logger: StructuredLogger) -> None:
         raise ValueError(f"Case path is not a directory: {case_path}")
 
 
-def _create_database_config(config_dict: Dict[str, Any]) -> DatabaseConfig:
-    """
-    Creates database configuration from the config dictionary.
-    """
-    db_conf = config_dict.get('database', {})
-    paths_conf = config_dict.get('paths', {}).get('local', {})
-    base_dir = config_dict.get('paths', {}).get('base_directory', '.')
-
-    db_path_template = paths_conf.get('database_path', 'database/mqi.db')
-    db_path = Path(db_path_template.format(base_directory=base_dir))
-
-    cache_size_mb = db_conf.get('cache_size_mb', 2)
-    cache_size = -abs(int(cache_size_mb * 1024))
-
-    return DatabaseConfig(
-        db_path=db_path,
-        timeout=db_conf.get('busy_timeout_ms', 5000) / 1000, # Convert ms to seconds
-        journal_mode=db_conf.get('journal_mode', 'WAL'),
-        synchronous=db_conf.get('synchronous_mode', 'NORMAL'),
-        cache_size=cache_size
-    )
-
-
-def _create_handler_config(config_dict: Dict[str, Any]) -> HandlerConfig:
-    """
-    Creates handler configuration from the config dictionary.
-    """
-    app_conf = config_dict.get('application', {})
-    return HandlerConfig(
-        command_timeout=app_conf.get('local_execution_timeout_seconds', 300)
-    )
-
-
-def _create_logging_config(config_dict: Dict[str, Any]) -> LoggingConfig:
-    """
-    Creates logging configuration from the config dictionary.
-    """
-    log_conf = config_dict.get('logging', {})
-    paths_conf = config_dict.get('paths', {}).get('local', {})
-    base_dir = config_dict.get('paths', {}).get('base_directory', '.')
-
-    log_dir_template = paths_conf.get('log_directory', 'logs')
-    log_dir = Path(log_dir_template.format(base_directory=base_dir))
-
-    return LoggingConfig(
-        log_level=log_conf.get('level', 'INFO').upper(),
-        log_dir=log_dir,
-        max_file_size=log_conf.get('max_file_size_mb', 10),
-        backup_count=log_conf.get('backup_count', 5),
-        structured_logging=log_conf.get('structured_logging', True)
-    )

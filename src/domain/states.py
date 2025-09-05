@@ -114,7 +114,7 @@ class PreprocessingState(WorkflowState):
             )
             
             if not result.success:
-                error_msg = f"mqi_interpreter failed: {result.error_message}"
+                error_msg = f"mqi_interpreter failed: {result.error}"
                 context.logger.error(error_msg, {
                     "case_id": context.case_id,
                     "command_output": result.output
@@ -184,7 +184,7 @@ class FileUploadState(WorkflowState):
                         remote_dir=remote_case_dir
                     )
                     if not result.success:
-                        error_msg = f"Failed to upload {file_name}: {result.error_message}"
+                        error_msg = f"Failed to upload {file_name}: {result.error}"
                         context.logger.error(error_msg, {
                             "case_id": context.case_id,
                             "file_name": file_name
@@ -253,7 +253,7 @@ class HpcExecutionState(WorkflowState):
             )
             
             if not job_result.success:
-                error_msg = f"Failed to submit HPC job: {job_result.error_message}"
+                error_msg = f"Failed to submit HPC job: {job_result.error}"
                 context.logger.error(error_msg, {"case_id": context.case_id})
                 context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
@@ -275,7 +275,7 @@ class HpcExecutionState(WorkflowState):
             context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
             
             if job_status.failed:
-                error_msg = f"HPC job failed: {job_status.error_message}"
+                error_msg = f"HPC job failed: {job_status.error}"
                 context.logger.error(error_msg, {
                     "case_id": context.case_id,
                     "job_id": job_id
@@ -343,7 +343,7 @@ class DownloadState(WorkflowState):
                     context.logger.warning(f"Failed to download {file_name}", {
                         "case_id": context.case_id,
                         "file_name": file_name,
-                        "error": result.error_message
+                        "error": result.error
                     })
             
             # Verify that at least the main output file was downloaded
@@ -411,7 +411,7 @@ class PostprocessingState(WorkflowState):
             )
             
             if not result.success:
-                error_msg = f"RawToDCM failed: {result.error_message}"
+                error_msg = f"RawToDCM failed: {result.error}"
                 context.logger.error(error_msg, {
                     "case_id": context.case_id,
                     "command_output": result.output

@@ -238,12 +238,12 @@ class MQIApplication:
                         
                         self.logger.info(f"Processing case: {case_id}")
                         
-                        # Submit case to worker
+                        # Submit case to worker - pass the entire settings object
                         future = executor.submit(
                             worker_main,
                             case_id,
                             case_path, 
-                            self.settings._yaml_config
+                            self.settings
                         )
                         active_futures[future] = case_id
                         

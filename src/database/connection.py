@@ -42,9 +42,8 @@ class DatabaseConnection:
         # Create database directory if it doesn't exist
         db_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Initialize connection and schema
+        # Initialize connection first, then schema
         self._connect()
-        self.init_db()
 
     def _connect(self) -> None:
         """

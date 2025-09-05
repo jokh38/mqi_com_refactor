@@ -203,6 +203,8 @@ class CaseRepository(BaseRepository):
         status: str,
         error_message: str = None,
         metadata: Dict[str, Any] = None,
+        step_name: str = None,  # Added for backward compatibility
+        details: str = None,    # Added for backward compatibility
     ) -> None:
         """
         Records the start or completion of a workflow step.
@@ -216,6 +218,18 @@ class CaseRepository(BaseRepository):
             error_message: Optional error message for failed steps
             metadata: Optional metadata dictionary
         """
+        # Handle backward compatibility
+        if step_name is not None:
+            # Try to convert step_name to WorkflowStep enum
+            try:
+                step = WorkflowStep(step_name)
+            except ValueError:
+                # If step_name doesn't match enum, use step parameter
+                pass
+        
+        if details and not error_message:
+            error_message = details
+
         self._log_operation(
             "record_workflow_step", case_id, step=step.value, status=status
         )

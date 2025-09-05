@@ -130,7 +130,7 @@ class GpuRepository(BaseRepository):
 
     def find_and_lock_available_gpu(
         self, case_id: str, min_memory_mb: int = 1000
-    ) -> Optional[str]:
+    ) -> Optional[Dict[str, str]]:
         """
         Atomically finds an idle GPU with sufficient memory and assigns it to a case.
 
@@ -142,7 +142,7 @@ class GpuRepository(BaseRepository):
             min_memory_mb: Minimum required memory in MB
 
         Returns:
-            UUID of assigned GPU if successful, None otherwise
+            Dictionary with gpu_uuid if successful, None otherwise
         """
         self._log_operation(
             "find_and_lock_available_gpu", case_id, min_memory_mb=min_memory_mb
@@ -203,7 +203,7 @@ class GpuRepository(BaseRepository):
                     },
                 )
 
-                return gpu_uuid
+                return {"gpu_uuid": gpu_uuid}
 
         except Exception as e:
             self.logger.error(
