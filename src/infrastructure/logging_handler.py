@@ -7,7 +7,7 @@ import logging
 import json
 import sys
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 from logging.handlers import RotatingFileHandler
 
@@ -74,7 +74,7 @@ class StructuredLogger:
         class JsonFormatter(logging.Formatter):
             def format(self, record):
                 log_data = {
-                    'timestamp': datetime.utcnow().isoformat(),
+                    'timestamp': datetime.now(timezone.utc).isoformat(),
                     'level': record.levelname,
                     'logger': record.name,
                     'message': record.getMessage(),
