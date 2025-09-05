@@ -283,3 +283,45 @@ class LocalHandler:
                 "error": str(e)
             })
             return False
+    
+    def run_mqi_interpreter(self, input_file: Path, output_file: Path, 
+                           case_path: Path) -> ExecutionResult:
+        """
+        Wrapper method for running mqi_interpreter with specific input/output files.
+        
+        Args:
+            input_file: Input .mqi file
+            output_file: Output JSON file path
+            case_path: Case directory path
+            
+        Returns:
+            ExecutionResult containing execution details
+        """
+        additional_args = {
+            "input": str(input_file),
+            "output": str(output_file)
+        }
+        
+        case_id = case_path.name  # Use directory name as case_id
+        return self.execute_mqi_interpreter(case_id, case_path, additional_args)
+    
+    def run_raw_to_dcm(self, input_file: Path, output_dir: Path, 
+                       case_path: Path) -> ExecutionResult:
+        """
+        Wrapper method for running RawToDCM with specific input/output paths.
+        
+        Args:
+            input_file: Input .raw file
+            output_dir: Output directory for DCM files
+            case_path: Case directory path
+            
+        Returns:
+            ExecutionResult containing execution details
+        """
+        additional_args = {
+            "input": str(input_file),
+            "output": str(output_dir)
+        }
+        
+        case_id = case_path.name  # Use directory name as case_id
+        return self.execute_raw_to_dicom(case_id, case_path, additional_args)

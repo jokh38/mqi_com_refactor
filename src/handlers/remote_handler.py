@@ -4,7 +4,8 @@
 # =====================================================================================
 
 import os
-from typing import Optional, Dict, Any, Tuple
+import time
+from typing import Optional, Dict, Any, Tuple, NamedTuple
 from pathlib import Path
 import paramiko
 from paramiko import SSHClient, SFTPClient
@@ -14,6 +15,34 @@ from src.config.settings import Settings
 from src.utils.retry_policy import RetryPolicy
 from src.domain.errors import ProcessingError
 from src.handlers.local_handler import ExecutionResult
+
+
+class UploadResult(NamedTuple):
+    """Result from file upload operation."""
+    success: bool
+    error_message: Optional[str] = None
+
+
+class JobSubmissionResult(NamedTuple):
+    """Result from HPC job submission."""
+    success: bool
+    job_id: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class JobStatus(NamedTuple):
+    """Status of an HPC job."""
+    job_id: str
+    status: str
+    failed: bool
+    completed: bool
+    error_message: Optional[str] = None
+
+
+class DownloadResult(NamedTuple):
+    """Result from file download operation."""
+    success: bool
+    error_message: Optional[str] = None
 
 class RemoteHandler:
     """
@@ -348,6 +377,319 @@ class RemoteHandler:
             "completion_time": None,
             "error_message": None
         }
+    
+    def upload_file(self, local_file: Path, remote_dir: str) -> UploadResult:
+        """
+        Upload a single file to HPC system.
+        
+        Args:
+            local_file: Path to local file to upload
+            remote_dir: Remote directory to upload to
+            
+        Returns:
+            UploadResult indicating success/failure
+        """
+        self.logger.debug("Uploading file to HPC", {
+            "local_file": str(local_file),
+            "remote_dir": remote_dir
+        })
+        
+        try:
+            self._ensure_connected()
+            
+            if not self._sftp_client:
+                return UploadResult(success=False, error_message="SFTP client not available")
+                
+            if not local_file.exists():
+                return UploadResult(success=False, error_message=f"Local file does not exist: {local_file}")
+            
+            # Create remote directory if it doesn't exist
+            self._mkdir_p(self._sftp_client, remote_dir)
+            
+            # Upload the file
+            remote_file_path = f"{remote_dir}/{local_file.name}".replace("\\", "/")
+            self._sftp_client.put(str(local_file), remote_file_path)
+            
+            self.logger.debug("File uploaded successfully", {
+                "local_file": str(local_file),
+                "remote_file": remote_file_path
+            })
+            
+            return UploadResult(success=True)
+            
+        except Exception as e:
+            error_msg = f"Failed to upload file: {e}"
+            self.logger.error(error_msg, {
+                "local_file": str(local_file),
+                "remote_dir": remote_dir
+            })
+            return UploadResult(success=False, error_message=error_msg)
+    
+    def submit_simulation_job(self, case_id: str, remote_case_dir: str, gpu_uuid: str) -> JobSubmissionResult:
+        """
+        Submit a MOQUI simulation job to the HPC system.
+        
+        Args:
+            case_id: Case identifier
+            remote_case_dir: Remote directory containing case files
+            gpu_uuid: GPU UUID to use for simulation
+            
+        Returns:
+            JobSubmissionResult with job ID if successful
+        """
+        self.logger.info("Submitting HPC simulation job", {
+            "case_id": case_id,
+            "remote_case_dir": remote_case_dir,
+            "gpu_uuid": gpu_uuid
+        })
+        
+        try:
+            # Create job submission script
+            job_script = f"""#!/bin/bash
+#SBATCH --job-name=moqui_{case_id}
+#SBATCH --output={remote_case_dir}/simulation.log
+#SBATCH --error={remote_case_dir}/simulation.err
+#SBATCH --gres=gpu:1
+#SBATCH --time=01:00:00
+
+cd {remote_case_dir}
+export CUDA_VISIBLE_DEVICES={gpu_uuid}
+/usr/local/bin/moqui_simulator --input preprocessed.json --output output.raw
+"""
+            
+            # Write job script to remote system
+            job_script_path = f"{remote_case_dir}/submit_job.sh"
+            
+            self._ensure_connected()
+            if not self._sftp_client:
+                return JobSubmissionResult(success=False, error_message="SFTP client not available")
+                
+            # Upload job script
+            with self._sftp_client.open(job_script_path, 'w') as f:
+                f.write(job_script)
+            
+            # Submit the job
+            submit_command = f"sbatch {job_script_path}"
+            result = self.execute_remote_command(case_id, submit_command)
+            
+            if not result.success:
+                return JobSubmissionResult(
+                    success=False,
+                    error_message=f"Job submission failed: {result.error}"
+                )
+            
+            # Extract job ID from sbatch output
+            # Typical sbatch output: "Submitted batch job 12345"
+            output_lines = result.output.strip().split('\n')
+            job_id = None
+            for line in output_lines:
+                if "Submitted batch job" in line:
+                    job_id = line.split()[-1]
+                    break
+            
+            if not job_id:
+                return JobSubmissionResult(
+                    success=False,
+                    error_message="Could not extract job ID from sbatch output"
+                )
+            
+            self.logger.info("HPC job submitted successfully", {
+                "case_id": case_id,
+                "job_id": job_id
+            })
+            
+            return JobSubmissionResult(success=True, job_id=job_id)
+            
+        except Exception as e:
+            error_msg = f"Job submission error: {e}"
+            self.logger.error(error_msg, {"case_id": case_id})
+            return JobSubmissionResult(success=False, error_message=error_msg)
+    
+    def wait_for_job_completion(self, job_id: str, timeout_seconds: int = 3600) -> JobStatus:
+        """
+        Wait for HPC job to complete, polling at regular intervals.
+        
+        Args:
+            job_id: HPC job identifier
+            timeout_seconds: Maximum time to wait for completion
+            
+        Returns:
+            JobStatus indicating final job status
+        """
+        self.logger.info("Waiting for HPC job completion", {
+            "job_id": job_id,
+            "timeout_seconds": timeout_seconds
+        })
+        
+        start_time = time.time()
+        poll_interval = 30  # Poll every 30 seconds
+        
+        while time.time() - start_time < timeout_seconds:
+            try:
+                # Check job status using squeue
+                status_command = f"squeue -j {job_id} --noheader --format='%T'"
+                result = self.execute_remote_command("job_polling", status_command)
+                
+                if result.success and result.output.strip():
+                    status = result.output.strip().upper()
+                    
+                    if status in ["COMPLETED", "COMPLETING"]:
+                        self.logger.info("HPC job completed successfully", {"job_id": job_id})
+                        return JobStatus(
+                            job_id=job_id,
+                            status=status,
+                            failed=False,
+                            completed=True
+                        )
+                    elif status in ["FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"]:
+                        self.logger.error("HPC job failed", {
+                            "job_id": job_id,
+                            "status": status
+                        })
+                        return JobStatus(
+                            job_id=job_id,
+                            status=status,
+                            failed=True,
+                            completed=True,
+                            error_message=f"Job failed with status: {status}"
+                        )
+                    else:
+                        # Job is still running (PENDING, RUNNING, etc.)
+                        self.logger.debug("HPC job still running", {
+                            "job_id": job_id,
+                            "status": status
+                        })
+                else:
+                    # Job not found in queue - might be completed or failed
+                    # Check if job completed by looking at job history
+                    history_command = f"sacct -j {job_id} --noheader --format='State' | head -1"
+                    history_result = self.execute_remote_command("job_history", history_command)
+                    
+                    if history_result.success and history_result.output.strip():
+                        status = history_result.output.strip().upper()
+                        if "COMPLETED" in status:
+                            return JobStatus(
+                                job_id=job_id,
+                                status=status,
+                                failed=False,
+                                completed=True
+                            )
+                        else:
+                            return JobStatus(
+                                job_id=job_id,
+                                status=status,
+                                failed=True,
+                                completed=True,
+                                error_message=f"Job finished with status: {status}"
+                            )
+                
+                # Wait before next poll
+                time.sleep(poll_interval)
+                
+            except Exception as e:
+                self.logger.warning("Error checking job status", {
+                    "job_id": job_id,
+                    "error": str(e)
+                })
+                time.sleep(poll_interval)
+        
+        # Timeout reached
+        self.logger.error("Timeout waiting for job completion", {
+            "job_id": job_id,
+            "timeout_seconds": timeout_seconds
+        })
+        
+        return JobStatus(
+            job_id=job_id,
+            status="TIMEOUT",
+            failed=True,
+            completed=False,
+            error_message=f"Timeout after {timeout_seconds} seconds"
+        )
+    
+    def download_file(self, remote_file_path: str, local_dir: Path) -> DownloadResult:
+        """
+        Download a single file from HPC system.
+        
+        Args:
+            remote_file_path: Path to remote file
+            local_dir: Local directory to download to
+            
+        Returns:
+            DownloadResult indicating success/failure
+        """
+        self.logger.debug("Downloading file from HPC", {
+            "remote_file": remote_file_path,
+            "local_dir": str(local_dir)
+        })
+        
+        try:
+            self._ensure_connected()
+            
+            if not self._sftp_client:
+                return DownloadResult(success=False, error_message="SFTP client not available")
+            
+            # Ensure local directory exists
+            local_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Extract filename from remote path
+            remote_filename = os.path.basename(remote_file_path)
+            local_file_path = local_dir / remote_filename
+            
+            # Download the file
+            self._sftp_client.get(remote_file_path, str(local_file_path))
+            
+            self.logger.debug("File downloaded successfully", {
+                "remote_file": remote_file_path,
+                "local_file": str(local_file_path)
+            })
+            
+            return DownloadResult(success=True)
+            
+        except Exception as e:
+            error_msg = f"Failed to download file: {e}"
+            self.logger.error(error_msg, {
+                "remote_file": remote_file_path,
+                "local_dir": str(local_dir)
+            })
+            return DownloadResult(success=False, error_message=error_msg)
+    
+    def cleanup_remote_directory(self, remote_dir: str) -> bool:
+        """
+        Clean up remote directory and its contents.
+        
+        Args:
+            remote_dir: Remote directory to clean up
+            
+        Returns:
+            True if cleanup successful
+        """
+        self.logger.debug("Cleaning up remote directory", {
+            "remote_dir": remote_dir
+        })
+        
+        try:
+            cleanup_command = f"rm -rf {remote_dir}"
+            result = self.execute_remote_command("cleanup", cleanup_command)
+            
+            if result.success:
+                self.logger.info("Remote directory cleaned up successfully", {
+                    "remote_dir": remote_dir
+                })
+                return True
+            else:
+                self.logger.warning("Remote directory cleanup failed", {
+                    "remote_dir": remote_dir,
+                    "error": result.error
+                })
+                return False
+                
+        except Exception as e:
+            self.logger.error("Error during remote cleanup", {
+                "remote_dir": remote_dir,
+                "error": str(e)
+            })
+            return False
     
     def __enter__(self):
         """Context manager entry."""
