@@ -50,9 +50,9 @@ class WorkflowStepRecord:
     """
     case_id: str
     step: WorkflowStep
+    status: str
     started_at: datetime
     completed_at: Optional[datetime] = None
-    status: str
     error_message: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 

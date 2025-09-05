@@ -125,8 +125,8 @@ class MQIApplication:
         """
         try:
             self.logger = StructuredLogger(
-                config=self.settings.logging,
-                component_name="main"
+                name="main",
+                config=self.settings.logging
             )
             self.logger.info("MQI Communicator starting up")
         except Exception as e:

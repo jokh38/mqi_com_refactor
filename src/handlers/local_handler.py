@@ -131,7 +131,7 @@ class LocalHandler:
                 )
         
         # Apply retry policy
-        result = self.retry_policy.execute_with_retry(
+        result = self.retry_policy.execute(
             execute_attempt,
             operation_name="mqi_interpreter",
             context={"case_id": case_id}
@@ -217,7 +217,7 @@ class LocalHandler:
                 )
         
         # Apply retry policy
-        result = self.retry_policy.execute_with_retry(
+        result = self.retry_policy.execute(
             execute_attempt,
             operation_name="raw_to_dicom",
             context={"case_id": case_id}

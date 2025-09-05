@@ -59,3 +59,10 @@ class ValidationError(MQIError):
     FROM: File and path validation errors from original codebase.
     """
     pass
+
+class RetryableError(MQIError):
+    """
+    Exception raised for errors that can be safely retried.
+    FROM: Conceptual need from the new RetryPolicy utility.
+    """
+    pass
