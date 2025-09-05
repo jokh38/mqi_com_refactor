@@ -99,7 +99,16 @@ class WorkflowManager:
         )
 
         try:
-            self.case_repo.update_case_status(self.case_id, CaseStatus.FAILED)
+            # Fetch the current case to get its progress before marking it as failed
+            case = self.case_repo.get_case(self.case_id)
+            current_progress = case.progress if case else 0.0
+
+            self.case_repo.update_case_status(
+                self.case_id,
+                CaseStatus.FAILED,
+                progress=current_progress,
+                error_message=str(error),
+            )
             self.logger.info(f"Case status updated to FAILED for case: {self.case_id}")
         except Exception as db_error:
             self.logger.error(
