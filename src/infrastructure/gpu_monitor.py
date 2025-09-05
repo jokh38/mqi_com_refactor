@@ -2,7 +2,6 @@
 # Target File: src/infrastructure/gpu_monitor.py
 # Source Reference: src/database_handler.py (nvidia-smi parsing logic)
 # =====================================================================================
-
 import subprocess
 import csv
 import time
@@ -26,8 +25,8 @@ class GpuMonitor:
           `populate_gpu_resources_from_nvidia_smi` in original `database_handler.py`
           and combines it with a threaded monitoring loop.
     REFACTORING NOTES: This class is now a stateful service. It separates data
-                      acquisition (via RemoteHandler) and parsing from data
-                      persistence (via GpuRepository).
+                       acquisition (via RemoteHandler) and parsing from data
+                       persistence (via GpuRepository).
     """
     
     def __init__(self,
@@ -250,3 +249,30 @@ class GpuMonitor:
         # Check utilization range
         if not (0 <= gpu_info['utilization'] <= 100):
             raise ValueError(f"Invalid utilization: {gpu_info['utilization']}%")
+
+    def check_nvidia_smi_available(self) -> bool:
+        """
+        Check if nvidia-smi command is available and working.
+        
+        Returns:
+            True if nvidia-smi is available and working
+        """
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--version'],
+                capture_output=True,
+                timeout=10,
+                check=True
+            )
+            
+            self.logger.debug("nvidia-smi is available", {
+                "version_output": result.stdout.strip()
+            })
+            
+            return True
+            
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+            self.logger.warning("nvidia-smi not available", {
+                "error": str(e)
+            })
+            return False
