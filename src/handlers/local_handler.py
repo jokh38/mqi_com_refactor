@@ -60,9 +60,7 @@ class LocalHandler:
         FROM: Python interpreter detection logic from original local_handler.py.
         REFACTORING NOTES: Externalized to configuration instead of hardcoding.
         """
-        # TODO (AI): Implement Python interpreter path resolution from settings
-        # This should come from the configuration system
-        return "python3"  # Default fallback
+        return self.settings.get_executables().get("python_interpreter", "python3")
     
     def execute_mqi_interpreter(self, case_id: str, case_path: Path, 
                                additional_args: Optional[Dict[str, Any]] = None) -> ExecutionResult:
@@ -85,10 +83,14 @@ class LocalHandler:
             "case_path": str(case_path)
         })
         
+        mqi_interpreter_path = self.settings.get_executables().get("mqi_interpreter")
+        if not mqi_interpreter_path:
+            raise ProcessingError("MQI interpreter path not configured.")
+
         # Build command arguments
         command = [
             self.python_interpreter,
-            "mqi_interpreter.py",  # TODO (AI): Get from configuration
+            mqi_interpreter_path,
             str(case_path)
         ]
         
@@ -172,10 +174,14 @@ class LocalHandler:
             "case_path": str(case_path)
         })
         
+        raw_to_dicom_path = self.settings.get_executables().get("raw_to_dicom")
+        if not raw_to_dicom_path:
+            raise ProcessingError("Raw to DICOM converter path not configured.")
+
         # Build command arguments
         command = [
             self.python_interpreter,
-            "raw_to_dcm.py",  # TODO (AI): Get from configuration
+            raw_to_dicom_path,
             str(case_path)
         ]
         
@@ -264,8 +270,10 @@ class LocalHandler:
                 self.logger.error("Case path is not a directory", {"case_path": str(case_path)})
                 return False
             
-            # TODO (AI): Add specific file/directory validation based on requirements
-            # This should check for required input files, configuration files, etc.
+            required_file = case_path / "case_config.yaml"
+            if not required_file.exists():
+                self.logger.warning(f"Required file not found: {required_file}")
+                # Depending on strictness, you might want to return False here
             
             return True
             

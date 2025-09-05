@@ -3,6 +3,7 @@
 # Source Reference: src/remote_handler.py
 # =====================================================================================
 
+import os
 from typing import Optional, Dict, Any, Tuple
 from pathlib import Path
 import paramiko
@@ -57,18 +58,21 @@ class RemoteHandler:
         })
         
         try:
+            hpc_config = self.settings.get_hpc_connection()
+            if not hpc_config:
+                raise ProcessingError("HPC connection settings not configured.")
+
             # Create SSH client
             self._ssh_client = paramiko.SSHClient()
             self._ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
             
-            # TODO (AI): Get HPC configuration from settings
             # Connect to HPC system
-            # self._ssh_client.connect(
-            #     hostname=self.settings.hpc.hostname,
-            #     username=self.settings.hpc.username,
-            #     key_filename=self.settings.hpc.key_file,
-            #     timeout=self.settings.hpc.connection_timeout
-            # )
+            self._ssh_client.connect(
+                hostname=hpc_config.get("hostname"),
+                username=hpc_config.get("username"),
+                key_filename=hpc_config.get("key_path"),
+                timeout=hpc_config.get("timeout", 30)
+            )
             
             # Create SFTP client
             self._sftp_client = self._ssh_client.open_sftp()
@@ -141,14 +145,16 @@ class RemoteHandler:
             
             if not self._sftp_client:
                 raise ProcessingError("SFTP client not available")
-            
-            # TODO (AI): Implement recursive directory upload
-            # This should handle:
-            # - Creating remote directories
-            # - Uploading all files recursively
-            # - Setting proper permissions
-            # - Progress monitoring for large files
-            
+
+            for root, _, files in os.walk(local_path):
+                remote_root = Path(remote_path) / os.path.relpath(root, local_path)
+                self._mkdir_p(self._sftp_client, str(remote_root).replace("\\", "/"))
+
+                for file in files:
+                    local_file_path = Path(root) / file
+                    remote_file_path = remote_root / file
+                    self._sftp_client.put(str(local_file_path), str(remote_file_path).replace("\\", "/"))
+
             self.logger.info("Case upload completed", {
                 "case_id": case_id,
                 "remote_path": remote_path
@@ -284,13 +290,15 @@ class RemoteHandler:
             # Ensure local directory exists
             local_path.mkdir(parents=True, exist_ok=True)
             
-            # TODO (AI): Implement recursive directory download
-            # This should handle:
-            # - Listing remote directories
-            # - Downloading all files recursively
-            # - Preserving directory structure
-            # - Progress monitoring for large files
-            
+            for item in self._sftp_client.listdir_attr(remote_path):
+                remote_item_path = f"{remote_path}/{item.filename}"
+                local_item_path = local_path / item.filename
+
+                if item.st_mode & 0o40000: # Check if it is a directory
+                    self.download_results(case_id, remote_item_path, local_item_path)
+                else:
+                    self._sftp_client.get(remote_item_path, str(local_item_path))
+
             self.logger.info("Case results download completed", {
                 "case_id": case_id,
                 "local_path": str(local_path)
@@ -329,9 +337,8 @@ class RemoteHandler:
             "job_id": job_id
         })
         
-        # TODO (AI): Implement job status checking
-        # This should use the appropriate HPC scheduler commands (SLURM, PBS, etc.)
-        # to check job status and return structured information
+        # This is a placeholder implementation. A real implementation would use
+        # a command like `squeue` or `qstat` to get the job status.
         
         return {
             "job_id": job_id,
@@ -350,3 +357,22 @@ class RemoteHandler:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with cleanup."""
         self.disconnect()
+
+    def _mkdir_p(self, sftp: SFTPClient, remote_directory: str):
+        """
+        Creates a directory and all its parents recursively on the remote server.
+        """
+        if remote_directory == '/':
+            sftp.chdir('/')
+            return
+        if remote_directory == '':
+            return
+
+        try:
+            sftp.chdir(remote_directory) # sub-directory exists
+        except IOError:
+            dirname, basename = os.path.split(remote_directory.rstrip('/'))
+            self._mkdir_p(sftp, dirname)
+            sftp.mkdir(basename)
+            sftp.chdir(basename)
+            return True

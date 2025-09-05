@@ -66,3 +66,9 @@ class RetryableError(MQIError):
     FROM: Conceptual need from the new RetryPolicy utility.
     """
     pass
+
+class CircuitBreakerOpenError(MQIError):
+    """
+    Exception raised when the circuit breaker is open.
+    """
+    pass
