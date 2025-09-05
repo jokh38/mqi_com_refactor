@@ -62,12 +62,13 @@ class DashboardDataProvider:
             raw_gpus = self.gpu_repo.get_all_gpu_resources()
             raw_cases = self.case_repo.get_all_active_cases()
 
+            # Set update time first
+            self._last_update = datetime.now()
+
             # Process data
             self._gpu_data = self._process_gpu_data(raw_gpus)
             self._active_cases = self._process_case_data(raw_cases)
             self._system_stats = self._calculate_system_metrics(raw_cases, raw_gpus)
-
-            self._last_update = datetime.now()
 
         except Exception as e:
             self.logger.error("Failed to refresh dashboard data", {"error": str(e)})
@@ -91,16 +92,18 @@ class DashboardDataProvider:
             if case.status in status_counts:
                 status_counts[case.status] += 1
             
-        return {
+        # Dynamically build the dictionary from the status_counts
+        metrics = {status.value: count for status, count in status_counts.items()}
+
+        # Add other system-wide metrics
+        metrics.update({
             "total_cases": len(cases),
-            "pending": status_counts.get(CaseStatus.PENDING, 0),
-            "preprocessing": status_counts.get(CaseStatus.PREPROCESSING, 0),
-            "processing": status_counts.get(CaseStatus.PROCESSING, 0),
-            "postprocessing": status_counts.get(CaseStatus.POSTPROCESSING, 0),
             "total_gpus": total_gpus,
             "available_gpus": available_gpus,
             "last_update": self._last_update
-        }
+        })
+
+        return metrics
 
     def _process_case_data(self, raw_cases: List[CaseData]) -> List[Dict[str, Any]]:
         """
