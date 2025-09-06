@@ -100,7 +100,7 @@ class LocalHandler:
             raise ProcessingError("MQI interpreter path not configured.")
 
         # Build command arguments
-        command = [self.python_interpreter, mqi_interpreter_path, str(case_path)]
+        command = [self.python_interpreter, mqi_interpreter_path]
 
         # Add additional arguments if provided
         if additional_args:
@@ -305,14 +305,18 @@ class LocalHandler:
         Args:
             input_file: Input moqui_tps.in file
             output_dir: Output directory for CSV files
-            case_path: Case directory path
+            case_path: Beam directory path (used as --logdir)
 
         Returns:
             ExecutionResult containing execution details
         """
-        additional_args = {"input": str(input_file), "output": str(output_dir)}
+        additional_args = {
+            "input": str(input_file), 
+            "outputdir": str(output_dir),
+            "logdir": str(case_path)
+        }
 
-        case_id = case_path.name  # Use directory name as case_id
+        case_id = case_path.parent.name  # Use parent directory name as case_id
         return self.execute_mqi_interpreter(case_id, case_path, additional_args)
 
     def run_raw_to_dcm(

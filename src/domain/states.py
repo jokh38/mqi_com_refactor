@@ -239,12 +239,13 @@ class PreprocessingState(WorkflowState):
                 
                 # Step 4: Robust error handling for individual beam
                 if not result.success:
-                    error_msg = f"mqi_interpreter failed for beam '{beam_path.name}': {result.error}"
+                    error_msg = f"mqi_interpreter failed for beam '{beam_path.name}'. Error: {result.error}"
                     context.logger.error(error_msg, {
                         "case_id": context.case_id,
                         "beam_name": beam_path.name,
                         "beam_path": str(beam_path),
-                        "command_output": result.output
+                        "command_output": result.output,
+                        "stderr": result.error
                     })
                     context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                     return FailedState()
