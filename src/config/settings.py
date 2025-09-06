@@ -220,7 +220,7 @@ class Settings:
             if 'logging' in config_data:
                 logging_config = config_data['logging']
                 base_dir = self._yaml_config.get('paths', {}).get('base_directory', '')
-                log_dir_str = logging_config.get('log_dir', str(self.logging.log_dir)).format(base_directory=base_dir)
+                log_dir_str = logging_config.get('log_dir', str(self.logging.log_dir)).format(base_directory=base_dir).lstrip('/\')
                 self.logging.log_dir = Path(log_dir_str)
                 self.logging.log_level = logging_config.get('log_level', self.logging.log_level)
                 self.logging.max_file_size = logging_config.get('max_file_size', self.logging.max_file_size)

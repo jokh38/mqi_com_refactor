@@ -40,7 +40,7 @@ paths:
 
 # Paths to the external command-line tools P1 will orchestrate
 executables:
-  python_interpreter: "C:/Python310/python.exe"
+  python_interpreter: "python"
   mqi_interpreter_script: "{base_directory}/mqi_interpreter/main_cli.py"
   raw_to_dicom_script: "{base_directory}/RawToDCM/moqui_raw2dicom.py"
 
