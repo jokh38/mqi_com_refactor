@@ -11,6 +11,7 @@ from src.repositories.gpu_repo import GpuRepository
 from src.handlers.local_handler import LocalHandler
 from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
+from src.core.tps_generator import TpsGenerator
 from src.domain.enums import CaseStatus
 from src.domain.states import WorkflowState, InitialState
 
@@ -30,6 +31,7 @@ class WorkflowManager:
         gpu_repo: GpuRepository,
         local_handler: LocalHandler,
         remote_handler: RemoteHandler,
+        tps_generator: TpsGenerator,
         logger: StructuredLogger,
         case_id: str,
         case_path: Path
@@ -41,6 +43,7 @@ class WorkflowManager:
         self.gpu_repo = gpu_repo
         self.local_handler = local_handler
         self.remote_handler = remote_handler
+        self.tps_generator = tps_generator
         self.logger = logger
         self.case_id = case_id
         self.case_path = case_path

@@ -16,6 +16,7 @@ from src.infrastructure.process_manager import CommandExecutor
 from src.utils.retry_policy import RetryPolicy
 from src.infrastructure.gpu_monitor import GpuMonitor
 from src.core.workflow_manager import WorkflowManager
+from src.core.tps_generator import TpsGenerator
 from src.config.settings import Settings, DatabaseConfig, HandlerConfig, LoggingConfig
 
 
@@ -63,12 +64,16 @@ def worker_main(case_id: str, case_path: Path, settings: Settings) -> None:
 
         local_handler = LocalHandler(settings, logger, command_executor, retry_policy)
         remote_handler = RemoteHandler(settings, logger, retry_policy)
+        
+        # Create TPS generator
+        tps_generator = TpsGenerator(settings, logger)
 
         workflow_manager = WorkflowManager(
             case_repo=case_repo,
             gpu_repo=gpu_repo,
             local_handler=local_handler,
             remote_handler=remote_handler,
+            tps_generator=tps_generator,
             logger=logger,
             case_id=case_id,
             case_path=case_path,

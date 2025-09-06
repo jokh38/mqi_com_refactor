@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from src.core.workflow_manager import WorkflowManager
 
-from src.domain.enums import CaseStatus
+from src.domain.enums import CaseStatus, WorkflowStep
 from src.domain.errors import ProcessingError
 from pathlib import Path
 
@@ -59,7 +59,7 @@ class InitialState(WorkflowState):
         context.case_repo.update_case_status(context.case_id, CaseStatus.PREPROCESSING)
         
         # Validate required files and directory structure
-        required_files = ["input.mqi", "config.json"]
+        required_files = ["config.json"]
         for file_name in required_files:
             required_file = context.case_path / file_name
             if not required_file.exists():
@@ -82,10 +82,97 @@ class InitialState(WorkflowState):
             "case_id": context.case_id
         })
         
-        return PreprocessingState()
+        return TpsGenerationState()
 
     def get_state_name(self) -> str:
         return "Initial Validation"
+
+class TpsGenerationState(WorkflowState):
+    """
+    TPS generation state - generates dynamic moqui_tps.in configuration file.
+    FROM: New state to replace static input.mqi dependency.
+    """
+
+    def execute(self, context: 'WorkflowManager') -> WorkflowState:
+        """
+        Generate moqui_tps.in configuration file for the case.
+        FROM: Logic extracted from legacy TPS generator service.
+        """
+        context.logger.info("Generating moqui_tps.in configuration file", {
+            "case_id": context.case_id
+        })
+        
+        try:
+            # Get GPU allocation for the case to determine GPU ID
+            gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.case_id)
+            if not gpu_allocation:
+                error_msg = "No GPU available for TPS generation"
+                context.logger.error(error_msg, {"case_id": context.case_id})
+                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                return FailedState()
+            
+            # Extract GPU ID from UUID (simplified approach)
+            # In practice, you might want to maintain a UUID->ID mapping
+            gpu_id = 0  # Default to 0, could be enhanced to parse from allocation
+            
+            # Generate the TPS file
+            success = context.tps_generator.generate_tps_file(
+                case_path=context.case_path,
+                case_id=context.case_id,
+                gpu_id=gpu_id,
+                execution_mode="remote"  # or "local" based on configuration
+            )
+            
+            # Release GPU allocation after generating config
+            context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+            
+            if not success:
+                error_msg = "Failed to generate moqui_tps.in file"
+                context.logger.error(error_msg, {"case_id": context.case_id})
+                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                return FailedState()
+            
+            # Verify the file was created
+            tps_file = context.case_path / "moqui_tps.in"
+            if not tps_file.exists():
+                error_msg = "Generated moqui_tps.in file not found"
+                context.logger.error(error_msg, {
+                    "case_id": context.case_id,
+                    "expected_file": str(tps_file)
+                })
+                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                return FailedState()
+            
+            # Record workflow step
+            context.case_repo.record_workflow_step(
+                case_id=context.case_id,
+                step=WorkflowStep.TPS_GENERATION,
+                status="completed",
+                error_message="TPS configuration file generated successfully"
+            )
+            
+            context.logger.info("TPS generation completed successfully", {
+                "case_id": context.case_id,
+                "tps_file": str(tps_file)
+            })
+            
+            return PreprocessingState()
+            
+        except Exception as e:
+            # Make sure to release GPU on any error
+            if 'gpu_allocation' in locals() and gpu_allocation:
+                context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+                
+            error_msg = f"TPS generation error: {str(e)}"
+            context.logger.error(error_msg, {
+                "case_id": context.case_id,
+                "exception_type": type(e).__name__
+            })
+            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            return FailedState()
+
+    def get_state_name(self) -> str:
+        return "TPS Generation"
 
 class PreprocessingState(WorkflowState):
     """
@@ -104,7 +191,7 @@ class PreprocessingState(WorkflowState):
         
         try:
             # Run mqi_interpreter on the case
-            input_file = context.case_path / "input.mqi"
+            input_file = context.case_path / "moqui_tps.in"
             output_file = context.case_path / "preprocessed.json"
             
             result = context.local_handler.run_mqi_interpreter(
@@ -171,7 +258,7 @@ class FileUploadState(WorkflowState):
             files_to_upload = [
                 "preprocessed.json",
                 "config.json",
-                "input.mqi"
+                "moqui_tps.in"
             ]
             
             remote_case_dir = f"/tmp/mqi_cases/{context.case_id}"

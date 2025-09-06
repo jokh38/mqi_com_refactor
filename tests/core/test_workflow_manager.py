@@ -16,7 +16,8 @@ class TestWorkflowManager:
     def mock_handlers(self):
         local_handler = MagicMock()
         remote_handler = MagicMock()
-        return local_handler, remote_handler
+        tps_generator = MagicMock()
+        return local_handler, remote_handler, tps_generator
 
     @pytest.fixture
     def mock_logger(self):
@@ -28,7 +29,7 @@ class TestWorkflowManager:
     ):
         # Arrange
         case_repo, gpu_repo = mock_repos
-        local_handler, remote_handler = mock_handlers
+        local_handler, remote_handler, tps_generator = mock_handlers
 
         case_id = "test_case"
         case_path = MagicMock()
@@ -50,6 +51,7 @@ class TestWorkflowManager:
             gpu_repo=gpu_repo,
             local_handler=local_handler,
             remote_handler=remote_handler,
+            tps_generator=tps_generator,
             logger=mock_logger,
             case_id=case_id,
             case_path=case_path,
