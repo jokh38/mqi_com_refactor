@@ -114,7 +114,7 @@ class TpsGenerationState(WorkflowState):
             )
             
             # Release GPU allocation after generating config
-            context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+            context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
             
             if not success:
                 error_msg = "Failed to generate moqui_tps.in file"
@@ -151,7 +151,7 @@ class TpsGenerationState(WorkflowState):
         except Exception as e:
             # Make sure to release GPU on any error
             if 'gpu_allocation' in locals() and gpu_allocation:
-                context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+                context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
                 
             error_msg = f"TPS generation error: {str(e)}"
             context.logger.error(error_msg, {
@@ -172,15 +172,34 @@ class PreprocessingState(WorkflowState):
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Execute local preprocessing using mqi_interpreter.
-        FROM: Preprocessing logic from original workflow.
+        Execute local preprocessing using mqi_interpreter for each beam subdirectory.
+        FROM: Refactored preprocessing logic to process individual beam directories.
         """
-        context.logger.info("Running mqi_interpreter preprocessing", {
+        context.logger.info("Running mqi_interpreter preprocessing for beam subdirectories", {
             "case_id": context.case_id
         })
         
         try:
-            # Get processing directory for CSV output
+            # Step 1: Identify beam subdirectories
+            beam_paths = [d for d in context.case_path.iterdir() if d.is_dir()]
+            
+            # Step 2: Pre-computation checks
+            if not beam_paths:
+                error_msg = "No beam subdirectories found in case directory"
+                context.logger.error(error_msg, {
+                    "case_id": context.case_id,
+                    "case_path": str(context.case_path)
+                })
+                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                return FailedState()
+            
+            context.logger.info(f"Found {len(beam_paths)} beam subdirectories to process", {
+                "case_id": context.case_id,
+                "beam_count": len(beam_paths),
+                "beam_names": [beam.name for beam in beam_paths]
+            })
+            
+            # Get processing directory for CSV output (shared for entire case)
             processing_dir = context.local_handler.settings.get_case_directories()['processing_directory'].format(
                 case_id=context.case_id,
                 base_directory=context.local_handler.settings.get_base_directory()
@@ -190,39 +209,70 @@ class PreprocessingState(WorkflowState):
             # Ensure processing directory exists
             processing_path.mkdir(parents=True, exist_ok=True)
             
-            # Run mqi_interpreter on the case to generate CSV files
+            # The input file is located in the parent case directory
             input_file = context.case_path / "moqui_tps.in"
-            
-            result = context.local_handler.run_mqi_interpreter(
-                input_file=input_file,
-                output_dir=processing_path,
-                case_path=context.case_path
-            )
-            
-            if not result.success:
-                error_msg = f"mqi_interpreter failed: {result.error}"
+            if not input_file.exists():
+                error_msg = f"moqui_tps.in file not found: {input_file}"
                 context.logger.error(error_msg, {
                     "case_id": context.case_id,
-                    "command_output": result.output
+                    "input_file": str(input_file)
                 })
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                 return FailedState()
             
-            # Verify CSV files were created
+            # Step 3: Iterate and execute for each beam directory
+            beams_processed = 0
+            for beam_path in beam_paths:
+                context.logger.info(f"Interpreting beam: {beam_path.name}", {
+                    "case_id": context.case_id,
+                    "beam_name": beam_path.name,
+                    "beam_path": str(beam_path)
+                })
+                
+                # Step 4: Execute mqi_interpreter with current beam_path
+                result = context.local_handler.run_mqi_interpreter(
+                    input_file=input_file,
+                    output_dir=processing_path,
+                    case_path=beam_path  # Crucially, pass the individual beam path
+                )
+                
+                # Step 4: Robust error handling for individual beam
+                if not result.success:
+                    error_msg = f"mqi_interpreter failed for beam '{beam_path.name}': {result.error}"
+                    context.logger.error(error_msg, {
+                        "case_id": context.case_id,
+                        "beam_name": beam_path.name,
+                        "beam_path": str(beam_path),
+                        "command_output": result.output
+                    })
+                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                    return FailedState()
+                
+                beams_processed += 1
+                context.logger.info(f"Successfully processed beam: {beam_path.name}", {
+                    "case_id": context.case_id,
+                    "beam_name": beam_path.name,
+                    "beams_processed": beams_processed,
+                    "total_beams": len(beam_paths)
+                })
+            
+            # Step 5: Verify collective success
             csv_files = list(processing_path.glob("*.csv"))
             if not csv_files:
-                error_msg = "No CSV files generated by mqi_interpreter"
+                error_msg = "No CSV files generated after processing all beams"
                 context.logger.error(error_msg, {
                     "case_id": context.case_id,
-                    "processing_dir": str(processing_path)
+                    "processing_dir": str(processing_path),
+                    "beams_processed": beams_processed
                 })
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                 return FailedState()
                 
-            context.logger.info("Preprocessing completed successfully", {
+            context.logger.info("Preprocessing completed successfully for all beams", {
                 "case_id": context.case_id,
                 "processing_dir": str(processing_path),
-                "csv_files_count": len(csv_files)
+                "csv_files_count": len(csv_files),
+                "beams_processed": beams_processed
             })
             
             return FileUploadState()
@@ -408,7 +458,7 @@ class HpcExecutionState(WorkflowState):
             )
             
             # Release GPU after job completion
-            context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+            context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
             
             if job_status.failed:
                 error_msg = f"HPC job failed: {job_status.error}"
@@ -429,7 +479,7 @@ class HpcExecutionState(WorkflowState):
         except Exception as e:
             # Make sure to release GPU on any error
             if 'gpu_allocation' in locals() and gpu_allocation:
-                context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
+                context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
                 
             error_msg = f"HPC execution error: {str(e)}"
             context.logger.error(error_msg, {
