@@ -41,15 +41,27 @@ paths:
 # Paths to the external command-line tools P1 will orchestrate
 executables:
   python_interpreter: "C:/Python310/python.exe"
-  mqi_interpreter: "{base_directory}/mqi_interpreter/main_cli.py"
-  raw_to_dicom: "{base_directory}/RawToDCM/moqui_raw2dicom.py"
+  mqi_interpreter_script: "{base_directory}/mqi_interpreter/main_cli.py"
+  raw_to_dicom_script: "{base_directory}/RawToDCM/moqui_raw2dicom.py"
+
+# Command templates for external program execution
+command_templates:
+  mqi_interpreter: >-
+    {python_interpreter} {mqi_interpreter_script}
+    --logdir {beam_directory}
+    --outputdir {output_dir}
+  
+  raw_to_dicom: >-
+    {python_interpreter} {raw_to_dicom_script}
+    --input {input_file}
+    --output {output_dir}
 
 # Connection details for the HPC server.
 hpc_connection:
   host: "10.243.62.128"
   user: "jokh38"
   # Using SSH keys is strongly recommended over passwords for security.
-  # ssh_key_path: "C:/Users/breezing/.ssh/id_rsa"
+  ssh_key_path: "C:/Users/breezing/.ssh/id_rsa"
   # ssh_key_path: "C:/Users/com/.ssh/id_rsa"
 
   # SSH connection timeout in seconds
@@ -74,7 +86,8 @@ database:
 
 logging:
   # Path for the main log file, relative to base_directory.
-  log_file_path: "{base_directory}/mqi_communicator/logs/mqi_communicator.log"
+    # Directory for log files, relative to base_directory.
+  log_dir: "{base_directory}/mqi_communicator/logs/"
   log_level: "INFO"
   console_level: "INFO"
   tz_hours: 9
@@ -82,7 +95,7 @@ logging:
 curator:
   # Command to get detailed GPU hardware statistics from the remote HPC.
   # This is used to detect if a GPU is busy with processes outside of Pueue.
-  gpu_monitor_command: "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits"
+  gpu_monitor_command: "nvidia-smi --query-gpu=uuid,name,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu --format=csv,noheader,nounits"
   # How often (in seconds) to refresh GPU monitoring data.
   gpu_monitor_interval_seconds: 10
 

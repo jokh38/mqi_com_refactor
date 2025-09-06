@@ -25,11 +25,20 @@ class TestLocalHandler(unittest.TestCase):
         # The retry policy mock will just execute the function it's given, simulating a single attempt.
         self.mock_retry_policy.execute.side_effect = lambda func, **kwargs: func()
 
-        # Configure mock settings for executables
+        # Configure mock settings for executables and command templates
         self.mock_settings.get_executables.return_value = {
             "python_interpreter": "python3",
+            "mqi_interpreter_script": "/path/to/mqi_interpreter.py",
+            "raw_to_dicom_script": "/path/to/raw_to_dicom.py",
+            # Backward compatibility names
             "mqi_interpreter": "/path/to/mqi_interpreter.py",
             "raw_to_dicom": "/path/to/raw_to_dicom.py"
+        }
+        
+        # Mock command_templates property
+        self.mock_settings.command_templates = {
+            "mqi_interpreter": "{python_interpreter} {mqi_interpreter_script} --logdir {beam_directory} --outputdir {output_dir}",
+            "raw_to_dicom": "{python_interpreter} {raw_to_dicom_script} --input {input_file} --output {output_dir}"
         }
 
         # Instantiate the handler with mocked dependencies
@@ -99,9 +108,10 @@ class TestLocalHandler(unittest.TestCase):
         mock_case_path = Path("/fake/case")
         mock_result = subprocess.CompletedProcess(args=[], stdout="Success", stderr="", returncode=0)
         self.mock_command_executor.execute_command.return_value = mock_result
+        test_command = ["python3", "/path/to/mqi_interpreter.py", "--logdir", "/fake/beam", "--outputdir", "/fake/output"]
 
         # Act
-        result = self.handler.execute_mqi_interpreter("case1", mock_case_path)
+        result = self.handler.execute_mqi_interpreter("case1", mock_case_path, test_command)
 
         # Assert
         self.assertTrue(result.success)
@@ -118,9 +128,10 @@ class TestLocalHandler(unittest.TestCase):
         error_instance = ProcessingError("Command failed")
         error_instance.return_code = 1  # Manually set the attribute
         self.mock_command_executor.execute_command.side_effect = error_instance
+        test_command = ["python3", "/path/to/mqi_interpreter.py", "--logdir", "/fake/beam", "--outputdir", "/fake/output"]
 
         # Act
-        result = self.handler.execute_mqi_interpreter("case1", mock_case_path)
+        result = self.handler.execute_mqi_interpreter("case1", mock_case_path, test_command)
 
         # Assert
         self.assertFalse(result.success)
@@ -135,9 +146,10 @@ class TestLocalHandler(unittest.TestCase):
         error_instance = ProcessingError("Command failed")
         error_instance.return_code = 1  # Manually set the attribute
         self.mock_command_executor.execute_command.side_effect = error_instance
+        test_command = ["python3", "/path/to/mqi_interpreter.py", "--logdir", "/fake/beam", "--outputdir", "/fake/output"]
 
         # Act
-        self.handler.execute_mqi_interpreter("case1", mock_case_path)
+        self.handler.execute_mqi_interpreter("case1", mock_case_path, test_command)
 
         # Assert
         self.mock_retry_policy.execute.assert_called_once()
@@ -180,21 +192,24 @@ class TestLocalHandler(unittest.TestCase):
     def test_run_mqi_interpreter_builds_correct_command(self):
         """Test that the wrapper method builds the command with correct arguments."""
         # Arrange
-        mock_case_path = Path("/fake/case1")
-        input_file = mock_case_path / "input.mqi"
-        output_file = mock_case_path / "output.json"
+        mock_beam_directory = Path("/fake/case1/beam1")
+        mock_output_dir = Path("/fake/case1/output")
 
         # We need to spy on the actual method to check the arguments it's called with
         with patch.object(self.handler, 'execute_mqi_interpreter', return_value=None) as mock_execute:
             # Act
-            self.handler.run_mqi_interpreter(input_file, output_file, mock_case_path)
+            self.handler.run_mqi_interpreter(mock_beam_directory, mock_output_dir)
 
-            # Assert
-            mock_execute.assert_called_once_with(
-                "case1",
-                mock_case_path,
-                {"input": str(input_file), "output": str(output_file)}
-            )
+            # Assert - Check that execute_mqi_interpreter is called with case_id, beam_directory, and built command
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            case_id, case_path, command = args
+            
+            self.assertEqual(case_id, "case1")  # beam_directory.parent.name
+            self.assertEqual(case_path, mock_beam_directory)
+            self.assertIsInstance(command, list)
+            self.assertIn("python3", command)
+            self.assertIn("/path/to/mqi_interpreter.py", command)
 
     def test_run_raw_to_dcm_builds_correct_command(self):
         """Test that the wrapper method builds the command with correct arguments."""

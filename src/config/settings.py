@@ -275,6 +275,7 @@ class Settings:
         """
         Get executable paths from YAML config.
         FROM: Executable paths configuration from config.yaml.
+        REFACTORING NOTES: Updated to handle new script-based naming convention.
         """
         if hasattr(self, '_yaml_config') and 'executables' in self._yaml_config:
             executables = self._yaml_config['executables']
@@ -282,8 +283,11 @@ class Settings:
             
             return {
                 "python_interpreter": executables.get('python_interpreter', '').format(base_directory=base_dir),
-                "mqi_interpreter": executables.get('mqi_interpreter', '').format(base_directory=base_dir),
-                "raw_to_dicom": executables.get('raw_to_dicom', '').format(base_directory=base_dir)
+                "mqi_interpreter_script": executables.get('mqi_interpreter_script', '').format(base_directory=base_dir),
+                "raw_to_dicom_script": executables.get('raw_to_dicom_script', '').format(base_directory=base_dir),
+                # Backward compatibility - keep old names if new ones don't exist
+                "mqi_interpreter": executables.get('mqi_interpreter_script', executables.get('mqi_interpreter', '')).format(base_directory=base_dir),
+                "raw_to_dicom": executables.get('raw_to_dicom_script', executables.get('raw_to_dicom', '')).format(base_directory=base_dir)
             }
         
         return {}
@@ -325,5 +329,16 @@ class Settings:
         """
         if hasattr(self, '_yaml_config') and 'moqui_tps_parameters' in self._yaml_config:
             return self._yaml_config['moqui_tps_parameters']
+        
+        return {}
+    
+    @property
+    def command_templates(self) -> Dict[str, str]:
+        """
+        Get command templates from YAML config.
+        FROM: Command templates configuration from config.yaml.
+        """
+        if hasattr(self, '_yaml_config') and 'command_templates' in self._yaml_config:
+            return self._yaml_config['command_templates']
         
         return {}
