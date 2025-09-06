@@ -378,8 +378,12 @@ class MQIApplication:
                     for future in completed_futures:
                         case_id = active_futures.pop(future)
                         try:
-                            future.result()  # This will raise exception if worker failed
-                            self.logger.info(f"Case {case_id} completed successfully")
+                            # future.exception()을 통해 예외 발생 여부를 명시적으로 확인
+                            if future.exception() is not None:
+                                # 예외가 있다면 future.result()를 호출하여 예외를 발생시키고 catch 블록에서 처리
+                                future.result()
+                            else:
+                                self.logger.info(f"Case {case_id} completed successfully")
                         except Exception as e:
                             self.logger.error(f"Case {case_id} failed", {"error": str(e)})
                     
