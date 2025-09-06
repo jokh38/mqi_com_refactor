@@ -85,6 +85,16 @@ class HandlerConfig:
     command_timeout: int = 300 # seconds
     ssh_timeout: int = 60 # seconds
 
+@dataclass
+class RetryPolicyConfig:
+    """
+    Configuration for retry policy settings.
+    """
+    max_retries: int = 3
+    initial_delay_seconds: int = 5
+    max_delay_seconds: int = 60
+    backoff_multiplier: float = 2.0
+
 class Settings:
     """
     Main configuration class that loads and manages all settings.
@@ -149,6 +159,14 @@ class Settings:
             enable_colors=os.getenv("MQI_UI_ENABLE_COLORS", "true").lower() == "true",
             show_gpu_details=os.getenv("MQI_UI_SHOW_GPU_DETAILS", "true").lower() == "true"
         )
+
+        # Retry Policy configuration
+        self.retry_policy = RetryPolicyConfig(
+            max_retries=int(os.getenv("MQI_RETRY_ATTEMPTS", "3")),
+            initial_delay_seconds=int(os.getenv("MQI_RETRY_DELAY", "5")),
+            max_delay_seconds=int(os.getenv("MQI_RETRY_MAX_DELAY", "60")),
+            backoff_multiplier=float(os.getenv("MQI_RETRY_BACKOFF", "2.0"))
+        )
     
     def _load_from_file(self, config_path: Path) -> None:
         """
@@ -162,6 +180,9 @@ class Settings:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config_data = yaml.safe_load(f)
             
+            # Store the full config for access to paths, executables, etc.
+            self._yaml_config = config_data
+
             # Override with YAML values if present
             if 'database' in config_data:
                 db_config = config_data['database']
@@ -191,13 +212,20 @@ class Settings:
                 
             if 'retry_policy' in config_data:
                 retry_config = config_data['retry_policy']
-                self.processing.retry_attempts = retry_config.get('max_retries', self.processing.retry_attempts)
-                self.processing.initial_delay_seconds = retry_config.get('initial_delay_seconds', 5)
-                self.processing.max_delay_seconds = retry_config.get('max_delay_seconds', 60)
-                self.processing.backoff_multiplier = retry_config.get('backoff_multiplier', 2.0)
+                self.retry_policy.max_retries = retry_config.get('max_retries', self.retry_policy.max_retries)
+                self.retry_policy.initial_delay_seconds = retry_config.get('initial_delay_seconds', self.retry_policy.initial_delay_seconds)
+                self.retry_policy.max_delay_seconds = retry_config.get('max_delay_seconds', self.retry_policy.max_delay_seconds)
+                self.retry_policy.backoff_multiplier = retry_config.get('backoff_multiplier', self.retry_policy.backoff_multiplier)
                 
-            # Store the full config for access to paths, executables, etc.
-            self._yaml_config = config_data
+            if 'logging' in config_data:
+                logging_config = config_data['logging']
+                base_dir = self._yaml_config.get('paths', {}).get('base_directory', '')
+                log_dir_str = logging_config.get('log_dir', str(self.logging.log_dir)).format(base_directory=base_dir)
+                self.logging.log_dir = Path(log_dir_str)
+                self.logging.log_level = logging_config.get('log_level', self.logging.log_level)
+                self.logging.max_file_size = logging_config.get('max_file_size', self.logging.max_file_size)
+                self.logging.backup_count = logging_config.get('backup_count', self.logging.backup_count)
+                self.logging.structured_logging = logging_config.get('structured_logging', self.logging.structured_logging)
             
         except Exception as e:
             # Log error but continue with defaults
@@ -279,6 +307,16 @@ class Settings:
             return self._yaml_config['paths'].get('hpc', {})
         
         return {}
+    
+    def get_base_directory(self) -> str:
+        """
+        Get base directory from YAML config.
+        FROM: Base directory configuration from config.yaml.
+        """
+        if hasattr(self, '_yaml_config') and 'paths' in self._yaml_config:
+            return self._yaml_config['paths'].get('base_directory', '')
+        
+        return ''
     
     def get_moqui_tps_parameters(self) -> Dict[str, Any]:
         """

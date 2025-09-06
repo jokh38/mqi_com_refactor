@@ -200,7 +200,8 @@ class PreprocessingState(WorkflowState):
             })
             
             # Get processing directory for CSV output (shared for entire case)
-            processing_dir = context.local_handler.settings.get_case_directories()['processing_directory'].format(
+            case_dirs = context.local_handler.settings.get_case_directories()
+            processing_dir = str(case_dirs['processing']).format(
                 case_id=context.case_id,
                 base_directory=context.local_handler.settings.get_base_directory()
             )
@@ -291,96 +292,59 @@ class PreprocessingState(WorkflowState):
 
 class FileUploadState(WorkflowState):
     """
-    File upload state - uploads files to HPC via SFTP.
+    File upload state - uploads files to HPC via SFTP with differentiated upload paths.
     FROM: FileUploadState from original states.py.
+    REFACTORED: Now uploads TPS file and CSV files to separate directories per refactor_execute.md
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Upload case files to HPC cluster via SFTP.
+        Upload case files to HPC cluster via SFTP with differentiated paths.
         FROM: File upload logic from original workflow.
+        REFACTORED: Separated TPS and CSV file uploads to different remote directories.
         """
-        context.logger.info("Uploading files to HPC cluster", {
+        context.logger.info("Uploading files to HPC cluster with differentiated paths", {
             "case_id": context.case_id
         })
         
         try:
-            # Get processing directory path for CSV files
-            processing_dir = context.local_handler.settings.get_case_directories()['processing_directory'].format(
-                case_id=context.case_id,
-                base_directory=context.local_handler.settings.get_base_directory()
-            )
-            processing_path = Path(processing_dir)
-            
-            remote_case_dir = f"/tmp/mqi_cases/{context.case_id}"
-            
-            # Upload CSV files to HPC
-            if processing_path.exists() and processing_path.is_dir():
-                csv_files = list(processing_path.glob("*.csv"))
-                if not csv_files:
-                    error_msg = "No CSV files found in processing directory"
-                    context.logger.error(error_msg, {
-                        "case_id": context.case_id,
-                        "processing_dir": str(processing_path)
-                    })
-                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                    return FailedState()
-                
-                # Upload each CSV file
-                for csv_file in csv_files:
-                    result = context.remote_handler.upload_file(
-                        local_file=csv_file,
-                        remote_dir=f"{remote_case_dir}/csv_data"
-                    )
-                    if not result.success:
-                        error_msg = f"Failed to upload CSV file {csv_file.name}: {result.error}"
-                        context.logger.error(error_msg, {
-                            "case_id": context.case_id,
-                            "csv_file": str(csv_file)
-                        })
-                        context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                        return FailedState()
-                        
-                context.logger.info(f"Successfully uploaded {len(csv_files)} CSV files", {
-                    "case_id": context.case_id,
-                    "csv_files_count": len(csv_files)
-                })
-            else:
-                error_msg = "CSV processing directory not found"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "processing_dir": str(processing_path)
-                })
+            # Get HPC paths from configuration
+            hpc_paths = context.local_handler.settings.get_hpc_paths()
+            if not hpc_paths:
+                error_msg = "HPC paths configuration not found"
+                context.logger.error(error_msg, {"case_id": context.case_id})
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                 return FailedState()
             
-            # Upload moqui_tps.in file
-            tps_file = context.case_path / "moqui_tps.in"
-            if tps_file.exists():
-                result = context.remote_handler.upload_file(
-                    local_file=tps_file,
-                    remote_dir=remote_case_dir
-                )
-                if not result.success:
-                    error_msg = f"Failed to upload moqui_tps.in: {result.error}"
-                    context.logger.error(error_msg, {
-                        "case_id": context.case_id,
-                        "file_name": "moqui_tps.in"
-                    })
-                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                    return FailedState()
-            else:
-                error_msg = "moqui_tps.in file not found"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "tps_file": str(tps_file)
-                })
+            tps_env_dir = hpc_paths.get('tps_env_dir')
+            output_csv_dir = hpc_paths.get('output_csv_dir')
+            
+            if not tps_env_dir or not output_csv_dir:
+                error_msg = "Required HPC paths (tps_env_dir, output_csv_dir) not configured"
+                context.logger.error(error_msg, {"case_id": context.case_id})
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                 return FailedState()
             
-            context.logger.info("File upload completed successfully", {
+            # Format the remote CSV directory path with case_id
+            remote_csv_path = output_csv_dir.format(case_id=context.case_id)
+            
+            # Step 1: Upload moqui_tps.in file to tps_env_dir
+            success = self._upload_tps_file(context, tps_env_dir)
+            if not success:
+                return FailedState()
+            
+            # Step 2: Upload CSV files to formatted remote CSV directory
+            success = self._upload_csv_files(context, remote_csv_path)
+            if not success:
+                return FailedState()
+            
+            # Store remote CSV path in context for HpcExecutionState
+            context.remote_csv_path = remote_csv_path
+            
+            context.logger.info("File upload completed successfully with differentiated paths", {
                 "case_id": context.case_id,
-                "remote_dir": remote_case_dir
+                "tps_dir": tps_env_dir,
+                "csv_dir": remote_csv_path
             })
             
             return HpcExecutionState()
@@ -393,6 +357,109 @@ class FileUploadState(WorkflowState):
             })
             context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
             return FailedState()
+
+    def _upload_tps_file(self, context: 'WorkflowManager', tps_env_dir: str) -> bool:
+        """
+        Upload moqui_tps.in file to the TPS environment directory.
+        
+        Args:
+            context: Workflow manager context
+            tps_env_dir: Remote TPS environment directory
+            
+        Returns:
+            True if upload successful, False otherwise
+        """
+        tps_file = context.case_path / "moqui_tps.in"
+        if not tps_file.exists():
+            error_msg = "moqui_tps.in file not found"
+            context.logger.error(error_msg, {
+                "case_id": context.case_id,
+                "tps_file": str(tps_file)
+            })
+            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            return False
+        
+        result = context.remote_handler.upload_file(
+            local_file=tps_file,
+            remote_dir=tps_env_dir
+        )
+        
+        if not result.success:
+            error_msg = f"Failed to upload moqui_tps.in to {tps_env_dir}: {result.error}"
+            context.logger.error(error_msg, {
+                "case_id": context.case_id,
+                "file_name": "moqui_tps.in",
+                "tps_env_dir": tps_env_dir
+            })
+            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            return False
+            
+        context.logger.info("Successfully uploaded moqui_tps.in", {
+            "case_id": context.case_id,
+            "tps_env_dir": tps_env_dir
+        })
+        return True
+
+    def _upload_csv_files(self, context: 'WorkflowManager', remote_csv_path: str) -> bool:
+        """
+        Upload all CSV files to the remote CSV directory.
+        
+        Args:
+            context: Workflow manager context
+            remote_csv_path: Remote directory path for CSV files
+            
+        Returns:
+            True if upload successful, False otherwise
+        """
+        # Get processing directory path for CSV files
+        case_dirs = context.local_handler.settings.get_case_directories()
+        processing_dir = str(case_dirs['processing']).format(
+            case_id=context.case_id,
+            base_directory=context.local_handler.settings.get_base_directory()
+        )
+        processing_path = Path(processing_dir)
+        
+        if not processing_path.exists() or not processing_path.is_dir():
+            error_msg = "CSV processing directory not found"
+            context.logger.error(error_msg, {
+                "case_id": context.case_id,
+                "processing_dir": str(processing_path)
+            })
+            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            return False
+        
+        csv_files = list(processing_path.glob("*.csv"))
+        if not csv_files:
+            error_msg = "No CSV files found in processing directory"
+            context.logger.error(error_msg, {
+                "case_id": context.case_id,
+                "processing_dir": str(processing_path)
+            })
+            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            return False
+        
+        # Upload each CSV file to the remote CSV directory
+        for csv_file in csv_files:
+            result = context.remote_handler.upload_file(
+                local_file=csv_file,
+                remote_dir=remote_csv_path
+            )
+            if not result.success:
+                error_msg = f"Failed to upload CSV file {csv_file.name}: {result.error}"
+                context.logger.error(error_msg, {
+                    "case_id": context.case_id,
+                    "csv_file": str(csv_file),
+                    "remote_csv_path": remote_csv_path
+                })
+                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                return False
+                
+        context.logger.info(f"Successfully uploaded {len(csv_files)} CSV files", {
+            "case_id": context.case_id,
+            "csv_files_count": len(csv_files),
+            "remote_csv_path": remote_csv_path
+        })
+        return True
 
     def get_state_name(self) -> str:
         return "File Upload"
@@ -430,11 +497,14 @@ class HpcExecutionState(WorkflowState):
                 "gpu_uuid": gpu_allocation.gpu_uuid
             })
             
-            # Submit simulation job to HPC
+            # Submit simulation job to HPC with dynamic CSV path
             remote_case_dir = f"/tmp/mqi_cases/{context.case_id}"
+            remote_csv_path = getattr(context, 'remote_csv_path', f"{remote_case_dir}/csv_data")
+            
             job_result = context.remote_handler.submit_simulation_job(
                 case_id=context.case_id,
                 remote_case_dir=remote_case_dir,
+                remote_csv_dir=remote_csv_path,
                 gpu_uuid=gpu_allocation.gpu_uuid
             )
             
@@ -543,10 +613,19 @@ class DownloadState(WorkflowState):
                 context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
                 return FailedState()
             
-            # Clean up remote directory
+            # Clean up remote directories
             context.remote_handler.cleanup_remote_directory(remote_case_dir)
             
-            context.logger.info("Results downloaded successfully", {
+            # Clean up remote CSV directory if it exists in context
+            remote_csv_path = getattr(context, 'remote_csv_path', None)
+            if remote_csv_path:
+                context.logger.info("Cleaning up remote CSV directory", {
+                    "case_id": context.case_id,
+                    "remote_csv_path": remote_csv_path
+                })
+                context.remote_handler.cleanup_remote_directory(remote_csv_path)
+            
+            context.logger.info("Results downloaded successfully and remote cleanup completed", {
                 "case_id": context.case_id
             })
             
@@ -634,7 +713,8 @@ class PostprocessingState(WorkflowState):
                     temp_path.unlink()
             
             # Clean up CSV processing directory
-            processing_dir = context.local_handler.settings.get_case_directories()['processing_directory'].format(
+            case_dirs = context.local_handler.settings.get_case_directories()
+            processing_dir = str(case_dirs['processing']).format(
                 case_id=context.case_id,
                 base_directory=context.local_handler.settings.get_base_directory()
             )

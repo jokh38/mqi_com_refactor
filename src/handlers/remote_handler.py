@@ -474,30 +474,32 @@ class RemoteHandler:
             return UploadResult(success=False, error=error_msg)
 
     def submit_simulation_job(
-        self, case_id: str, remote_case_dir: str, gpu_uuid: str
+        self, case_id: str, remote_case_dir: str, remote_csv_dir: str, gpu_uuid: str
     ) -> JobSubmissionResult:
         """
-        Submit a MOQUI simulation job to the HPC system.
+        Submit a MOQUI simulation job to the HPC system with dynamic CSV input path.
 
         Args:
             case_id: Case identifier
-            remote_case_dir: Remote directory containing case files
+            remote_case_dir: Remote directory for job execution
+            remote_csv_dir: Remote directory containing CSV input files
             gpu_uuid: GPU UUID to use for simulation
 
         Returns:
             JobSubmissionResult with job ID if successful
         """
         self.logger.info(
-            "Submitting HPC simulation job",
+            "Submitting HPC simulation job with dynamic CSV path",
             {
                 "case_id": case_id,
                 "remote_case_dir": remote_case_dir,
+                "remote_csv_dir": remote_csv_dir,
                 "gpu_uuid": gpu_uuid,
             },
         )
 
         try:
-            # Create job submission script
+            # Create job submission script with dynamic CSV input path
             job_script = f"""#!/bin/bash
 #SBATCH --job-name=moqui_{case_id}
 #SBATCH --output={remote_case_dir}/simulation.log
@@ -507,7 +509,7 @@ class RemoteHandler:
 
 cd {remote_case_dir}
 export CUDA_VISIBLE_DEVICES={gpu_uuid}
-/usr/local/bin/moqui_simulator --input csv_data --output output.raw
+/usr/local/bin/moqui_simulator --input {remote_csv_dir} --output output.raw
 """
 
             # Write job script to remote system
