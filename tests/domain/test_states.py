@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from pathlib import Path
 
 from src.domain.states import (
@@ -87,23 +87,70 @@ def test_initial_state_get_name():
 
 def test_preprocessing_state_success(mock_context):
     state = PreprocessingState()
-    mock_context.local_handler.run_mqi_interpreter.return_value = Mock(
-        success=True
-    )
-    (mock_context.case_path / "preprocessed.json").exists.return_value = True
-
-    next_state = state.execute(mock_context)
+    
+    # Mock beam directories
+    mock_beam1 = Mock()
+    mock_beam1.is_dir.return_value = True
+    mock_beam1.name = "beam1"
+    mock_beam2 = Mock()
+    mock_beam2.is_dir.return_value = True
+    mock_beam2.name = "beam2"
+    
+    mock_context.case_path.iterdir.return_value = [mock_beam1, mock_beam2]
+    
+    # Mock moqui_tps.in file exists
+    (mock_context.case_path / "moqui_tps.in").exists.return_value = True
+    
+    # Mock local handler settings
+    mock_context.local_handler.settings.get_case_directories.return_value = {
+        'processing': '/fake/processing/{case_id}'
+    }
+    mock_context.local_handler.settings.get_base_directory.return_value = '/fake/base'
+    
+    # Mock processing directory path and CSV files
+    mock_processing_path = Mock()
+    mock_processing_path.mkdir = Mock()
+    mock_processing_path.glob.return_value = ['file1.csv', 'file2.csv']
+    
+    with patch('src.domain.states.Path', return_value=mock_processing_path):
+        # Mock successful interpreter runs
+        mock_context.local_handler.run_mqi_interpreter.return_value = Mock(success=True)
+        
+        next_state = state.execute(mock_context)
 
     assert isinstance(next_state, FileUploadState)
 
 
 def test_preprocessing_state_interpreter_fails(mock_context):
     state = PreprocessingState()
-    mock_context.local_handler.run_mqi_interpreter.return_value = Mock(
-        success=False, error_message="Interpreter failed"
-    )
-
-    next_state = state.execute(mock_context)
+    
+    # Mock beam directories
+    mock_beam1 = Mock()
+    mock_beam1.is_dir.return_value = True
+    mock_beam1.name = "beam1"
+    
+    mock_context.case_path.iterdir.return_value = [mock_beam1]
+    
+    # Mock moqui_tps.in file exists
+    (mock_context.case_path / "moqui_tps.in").exists.return_value = True
+    
+    # Mock local handler settings
+    mock_context.local_handler.settings.get_case_directories.return_value = {
+        'processing': '/fake/processing/{case_id}'
+    }
+    mock_context.local_handler.settings.get_base_directory.return_value = '/fake/base'
+    
+    # Mock processing directory path
+    mock_processing_path = Mock()
+    mock_processing_path.mkdir = Mock()
+    
+    with patch('src.domain.states.Path', return_value=mock_processing_path):
+        # Mock failed interpreter run
+        mock_context.local_handler.run_mqi_interpreter.return_value = Mock(
+            success=False, error="Interpreter failed"
+        )
+        
+        next_state = state.execute(mock_context)
 
     mock_context.case_repo.update_case_status.assert_called_once_with(
         mock_context.case_id, CaseStatus.FAILED

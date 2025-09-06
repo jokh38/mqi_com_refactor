@@ -196,38 +196,27 @@ class LocalHandler:
         self,
         case_id: str,
         case_path: Path,
-        additional_args: Optional[Dict[str, Any]] = None,
+        command: list[str],  # Now accepts pre-built command instead of building it internally
     ) -> ExecutionResult:
         """
-        Executes the RawToDCM converter (P3) for a given case.
+        미리 생성된 명령어를 사용하여 RawToDCM converter를 실행합니다.
 
         FROM: Migrated from `execute_raw_to_dicom` method in original `local_handler.py`.
-        REFACTORING NOTES: Uses injected dependencies and configuration.
+        REFACTORING NOTES: Uses injected dependencies and now accepts pre-built command 
+                          instead of building it internally, following the same pattern as execute_mqi_interpreter.
 
         Args:
             case_id: Case identifier for logging
             case_path: Path to the case directory
-            additional_args: Optional additional arguments for the converter
+            command: Pre-built command list to execute
 
         Returns:
             ExecutionResult containing execution details
         """
         self.logger.info(
             "Executing Raw to DICOM converter",
-            {"case_id": case_id, "case_path": str(case_path)},
+            {"case_id": case_id, "command": " ".join(command)},
         )
-
-        raw_to_dicom_path = self.settings.get_executables().get("raw_to_dicom")
-        if not raw_to_dicom_path:
-            raise ProcessingError("Raw to DICOM converter path not configured.")
-
-        # Build command arguments
-        command = [self.python_interpreter, raw_to_dicom_path, str(case_path)]
-
-        # Add additional arguments if provided
-        if additional_args:
-            for key, value in additional_args.items():
-                command.extend([f"--{key}", str(value)])
 
         # Execute with retry policy
         def execute_attempt():
@@ -357,7 +346,8 @@ class LocalHandler:
         self, input_file: Path, output_dir: Path, case_path: Path
     ) -> ExecutionResult:
         """
-        Wrapper method for running RawToDCM with specific input/output paths.
+        RawToDCM 실행을 위한 Wrapper 메서드.
+        템플릿에 필요한 동적 인자를 정의하고, 명령어 생성을 위임합니다.
 
         Args:
             input_file: Input .raw file
@@ -367,7 +357,16 @@ class LocalHandler:
         Returns:
             ExecutionResult containing execution details
         """
-        additional_args = {"input": str(input_file), "output": str(output_dir)}
+        dynamic_args = {
+            "input_file": str(input_file),
+            "output_dir": str(output_dir),
+        }
 
+        # 범용 빌더를 호출하여 명령어 생성
+        command_to_execute = self._build_command_from_template(
+            "raw_to_dicom", **dynamic_args
+        )
+        
         case_id = case_path.name  # Use directory name as case_id
-        return self.execute_raw_to_dicom(case_id, case_path, additional_args)
+        # execute_raw_to_dicom는 이제 미리 빌드된 명령어를 받아 실행만 담당
+        return self.execute_raw_to_dicom(case_id, case_path, command_to_execute)

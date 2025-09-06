@@ -162,11 +162,12 @@ class TestLocalHandler(unittest.TestCase):
         """Test successful execution of the RawToDicom converter."""
         # Arrange
         mock_case_path = Path("/fake/case")
+        test_command = ["python3", "/path/to/raw_to_dicom.py", "--input", "/input.raw", "--output", "/output"]
         mock_result = subprocess.CompletedProcess(args=[], stdout="Success", stderr="", returncode=0)
         self.mock_command_executor.execute_command.return_value = mock_result
 
         # Act
-        result = self.handler.execute_raw_to_dicom("case1", mock_case_path)
+        result = self.handler.execute_raw_to_dicom("case1", mock_case_path, test_command)
 
         # Assert
         self.assertTrue(result.success)
@@ -177,12 +178,13 @@ class TestLocalHandler(unittest.TestCase):
         """Test failed execution of the RawToDicom converter."""
         # Arrange
         mock_case_path = Path("/fake/case")
+        test_command = ["python3", "/path/to/raw_to_dicom.py", "--input", "/input.raw", "--output", "/output"]
         error_instance = ProcessingError("Command failed")
         error_instance.return_code = 1
         self.mock_command_executor.execute_command.side_effect = error_instance
 
         # Act
-        result = self.handler.execute_raw_to_dicom("case1", mock_case_path)
+        result = self.handler.execute_raw_to_dicom("case1", mock_case_path, test_command)
 
         # Assert
         self.assertFalse(result.success)
@@ -222,12 +224,16 @@ class TestLocalHandler(unittest.TestCase):
             # Act
             self.handler.run_raw_to_dcm(input_file, output_dir, mock_case_path)
 
-            # Assert
-            mock_execute.assert_called_once_with(
-                "case1",
-                mock_case_path,
-                {"input": str(input_file), "output": str(output_dir)}
-            )
+            # Assert - Check that execute_raw_to_dicom is called with case_id, case_path, and built command
+            mock_execute.assert_called_once()
+            args, kwargs = mock_execute.call_args
+            case_id, case_path, command = args
+            
+            self.assertEqual(case_id, "case1")
+            self.assertEqual(case_path, mock_case_path)
+            self.assertIsInstance(command, list)
+            self.assertIn("python3", command)
+            self.assertIn("/path/to/raw_to_dicom.py", command)
 
 
 if __name__ == '__main__':

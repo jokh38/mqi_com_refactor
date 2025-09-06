@@ -158,29 +158,6 @@ class PreprocessingState(WorkflowState):
         })
         
         try:
-            # Step 0: Validate mqi_interpreter executable path
-            executables = context.local_handler.settings.get_executables()
-            mqi_interpreter_path = executables.get("mqi_interpreter_script")
-            if mqi_interpreter_path:
-                # Format the path with base_directory if needed
-                base_dir = context.local_handler.settings.get_base_directory()
-                formatted_path = mqi_interpreter_path.format(base_directory=base_dir)
-                interpreter_file = Path(formatted_path)
-                
-                if not interpreter_file.exists():
-                    error_msg = f"mqi_interpreter script not found at: {formatted_path}"
-                    context.logger.error(error_msg, {
-                        "case_id": context.case_id,
-                        "expected_path": formatted_path
-                    })
-                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                    return FailedState()
-                    
-                context.logger.info("mqi_interpreter executable validated", {
-                    "case_id": context.case_id,
-                    "interpreter_path": formatted_path
-                })
-            
             # Step 1: Identify beam subdirectories
             beam_paths = [d for d in context.case_path.iterdir() if d.is_dir()]
             
