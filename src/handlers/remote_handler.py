@@ -111,10 +111,10 @@ class RemoteHandler:
 
             # Connect to HPC system
             self._ssh_client.connect(
-                hostname=hpc_config.get("hostname"),
-                username=hpc_config.get("username"),
-                key_filename=hpc_config.get("key_path"),
-                timeout=hpc_config.get("timeout", 30),
+                hostname=hpc_config.get("host"),
+                username=hpc_config.get("user"),
+                key_filename=hpc_config.get("ssh_key_path"),
+                timeout=hpc_config.get("connection_timeout_seconds", 30),
             )
 
             # Create SFTP client
@@ -507,7 +507,7 @@ class RemoteHandler:
 
 cd {remote_case_dir}
 export CUDA_VISIBLE_DEVICES={gpu_uuid}
-/usr/local/bin/moqui_simulator --input preprocessed.json --output output.raw
+/usr/local/bin/moqui_simulator --input csv_data --output output.raw
 """
 
             # Write job script to remote system

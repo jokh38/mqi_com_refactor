@@ -297,20 +297,20 @@ class LocalHandler:
             return False
 
     def run_mqi_interpreter(
-        self, input_file: Path, output_file: Path, case_path: Path
+        self, input_file: Path, output_dir: Path, case_path: Path
     ) -> ExecutionResult:
         """
-        Wrapper method for running mqi_interpreter with specific input/output files.
+        Wrapper method for running mqi_interpreter with specific input file and output directory.
 
         Args:
-            input_file: Input .mqi file
-            output_file: Output JSON file path
+            input_file: Input moqui_tps.in file
+            output_dir: Output directory for CSV files
             case_path: Case directory path
 
         Returns:
             ExecutionResult containing execution details
         """
-        additional_args = {"input": str(input_file), "output": str(output_file)}
+        additional_args = {"input": str(input_file), "output": str(output_dir)}
 
         case_id = case_path.name  # Use directory name as case_id
         return self.execute_mqi_interpreter(case_id, case_path, additional_args)

@@ -204,13 +204,8 @@ class TpsGenerator:
             elif len(dicom_files) == 1:
                 return 1
             else:
-                # Look for config.json or other metadata files
-                config_file = case_path / "config.json"
-                if config_file.exists():
-                    # Could parse JSON to extract beam information
-                    pass
-                    
-                # Default to 1 beam
+                # No DICOM files found, default to 1 beam
+                # Future enhancement could look for other metadata sources
                 return 1
                 
         except Exception as e:
