@@ -196,6 +196,30 @@ class CaseRepository(BaseRepository):
 
         return cases
 
+    def get_all_case_ids(self) -> List[str]:
+        """
+        Retrieves all case IDs from the database.
+        
+        Optimized method for startup scanning that only fetches case IDs
+        instead of full case data for better performance.
+        
+        Returns:
+            List of case IDs currently in the database
+        """
+        self._log_operation("get_all_case_ids")
+        
+        query = "SELECT case_id FROM cases ORDER BY case_id ASC"
+        rows = self._execute_query(query, fetch_all=True)
+        
+        case_ids = [row["case_id"] for row in rows]
+        
+        self.logger.info(
+            "Retrieved all case IDs from database",
+            {"total_cases": len(case_ids)}
+        )
+        
+        return case_ids
+
     def record_workflow_step(
         self,
         case_id: str,

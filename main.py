@@ -38,7 +38,85 @@ from src.infrastructure.logging_handler import StructuredLogger
 from src.infrastructure.process_manager import ProcessManager
 from src.infrastructure.ui_process_manager import UIProcessManager
 from src.database.connection import DatabaseConnection
+from src.repositories.gpu_repo import GpuRepository
+from src.repositories.case_repo import CaseRepository
+from src.infrastructure.gpu_monitor import GpuMonitor
+from src.handlers.remote_handler import RemoteHandler
+from src.utils.retry_policy import RetryPolicy
 from src.core.worker import worker_main
+
+
+def scan_existing_cases(case_queue: mp.Queue, settings: Settings, logger: StructuredLogger) -> None:
+    """
+    Scan the scan_directory at startup for existing cases and add any missing ones to the processing queue.
+    
+    This function compares case directories found in the file system with those already recorded
+    in the database and queues any new cases for processing.
+    
+    Args:
+        case_queue: Queue for communicating new cases to worker processes
+        settings: Application settings containing directory paths
+        logger: Logger for recording operations
+    """
+    try:
+        # Get scan directory from settings
+        case_dirs = settings.get_case_directories()
+        scan_directory = case_dirs.get("scan")
+        
+        if not scan_directory or not scan_directory.exists():
+            logger.warning(f"Scan directory does not exist or is not configured: {scan_directory}")
+            return
+        
+        # Initialize database connection and case repository
+        db_path = settings.get_database_path()
+        db_connection = DatabaseConnection(
+            db_path=db_path,
+            config=settings.database,
+            logger=logger
+        )
+        case_repo = CaseRepository(db_connection, logger)
+        
+        try:
+            # Get all case IDs from database
+            existing_case_ids = set(case_repo.get_all_case_ids())
+            logger.info(f"Found {len(existing_case_ids)} cases already in database")
+            
+            # Scan file system for case directories
+            filesystem_cases = []
+            for item in scan_directory.iterdir():
+                if item.is_dir():
+                    case_id = item.name
+                    filesystem_cases.append((case_id, item))
+            
+            logger.info(f"Found {len(filesystem_cases)} case directories in scan directory")
+            
+            # Find cases that are in file system but not in database
+            new_cases = []
+            for case_id, case_path in filesystem_cases:
+                if case_id not in existing_case_ids:
+                    new_cases.append((case_id, case_path))
+            
+            # Add new cases to processing queue
+            if new_cases:
+                logger.info(f"Found {len(new_cases)} new cases to process")
+                for case_id, case_path in new_cases:
+                    try:
+                        case_queue.put({
+                            'case_id': case_id,
+                            'case_path': str(case_path),
+                            'timestamp': time.time()
+                        })
+                        logger.info(f"Queued existing case for processing: {case_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to queue existing case {case_id}", {"error": str(e)})
+            else:
+                logger.info("No new cases found during startup scan")
+                
+        finally:
+            db_connection.close()
+            
+    except Exception as e:
+        logger.error("Failed to scan existing cases during startup", {"error": str(e)})
 
 
 class CaseDetectionHandler(FileSystemEventHandler):
@@ -112,6 +190,8 @@ class MQIApplication:
         self.observer: Optional[Observer] = None
         self.executor: Optional[ProcessPoolExecutor] = None
         self.ui_process_manager: Optional[UIProcessManager] = None
+        self.gpu_monitor: Optional[GpuMonitor] = None
+        self.monitor_db_connection: Optional[DatabaseConnection] = None
         self.shutdown_event = threading.Event()
         
     def initialize_logging(self) -> None:
@@ -208,6 +288,51 @@ class MQIApplication:
         except Exception as e:
             self.logger.error("Failed to start dashboard", {"error": str(e)})
     
+    def start_gpu_monitor(self) -> None:
+        """
+        Start the GPU monitoring service as a background thread.
+        """
+        try:
+            self.logger.info("Initializing GPU monitoring service.")
+
+            # Create a dedicated database connection for the monitor
+            db_path = self.settings.get_database_path()
+            self.monitor_db_connection = DatabaseConnection(
+                db_path=db_path,
+                config=self.settings.database,
+                logger=self.logger
+            )
+            gpu_repo = GpuRepository(self.monitor_db_connection, self.logger)
+
+            # Create dependencies for RemoteHandler
+            retry_policy = RetryPolicy(
+                max_attempts=self.settings.retry_policy.max_retries,
+                base_delay=self.settings.retry_policy.initial_delay_seconds,
+                max_delay=self.settings.retry_policy.max_delay_seconds,
+                backoff_multiplier=self.settings.retry_policy.backoff_multiplier,
+                logger=self.logger
+            )
+            remote_handler = RemoteHandler(self.settings, self.logger, retry_policy)
+
+            # Get command and interval from settings
+            command_str = self.settings.gpu.gpu_monitor_command
+            command_list = command_str.split()
+            interval = self.settings.gpu.monitor_interval
+
+            self.gpu_monitor = GpuMonitor(
+                logger=self.logger,
+                remote_handler=remote_handler,
+                gpu_repository=gpu_repo,
+                command=command_list,
+                update_interval=interval
+            )
+
+            self.gpu_monitor.start()
+            self.logger.info("GPU monitoring service started.")
+
+        except Exception as e:
+            self.logger.error("Failed to start GPU monitor", {"error": str(e)})
+
     def run_worker_loop(self) -> None:
         """
         Main worker processing loop.
@@ -263,7 +388,9 @@ class MQIApplication:
                     break
                 except Exception as e:
                     self.logger.error("Error in worker loop", {"error": str(e)})
-                    time.sleep(1)  # Brief pause before retrying
+                
+                # Prevent busy-waiting
+                time.sleep(1)
     
     def shutdown(self) -> None:
         """
@@ -278,6 +405,14 @@ class MQIApplication:
         if self.observer:
             self.observer.stop()
             self.observer.join()
+            
+        # Stop GPU monitor
+        if self.gpu_monitor:
+            self.logger.info("Stopping GPU monitor.")
+            self.gpu_monitor.stop()
+
+        if self.monitor_db_connection:
+            self.monitor_db_connection.close()
             
         # Stop dashboard UI process
         if self.ui_process_manager:
@@ -298,9 +433,14 @@ class MQIApplication:
             self.initialize_logging()
             self.initialize_database()
             
+            # Scan for existing cases that haven't been processed yet
+            self.logger.info("Scanning for existing cases at startup")
+            scan_existing_cases(self.case_queue, self.settings, self.logger)
+            
             # Start monitoring and UI
             self.start_file_watcher()
             self.start_dashboard()
+            self.start_gpu_monitor()
             
             # Run main processing loop
             self.run_worker_loop()
@@ -323,7 +463,13 @@ def setup_signal_handlers(app: MQIApplication) -> None:
     FROM: Signal handling from original main.py.
     """
     def signal_handler(signum, frame):
-        print(f"\nReceived signal {signum}, shutting down...")
+        # Using print() here can corrupt the rich display during shutdown.
+        # It's better to use the logger if it's available.
+        message = f"\nReceived signal {signum}, shutting down..."
+        if app.logger:
+            app.logger.info(message.strip())
+        else:
+            print(message)
         app.shutdown()
         sys.exit(0)
     
