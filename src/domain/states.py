@@ -41,16 +41,16 @@ class WorkflowState(ABC):
 
 class InitialState(WorkflowState):
     """
-    Initial state for new cases - validates case structure and requirements.
-    FROM: Initial state logic from original states.py.
+    Initial state for new cases - validates case structure and dynamically generates moqui_tps.in.
+    FROM: Initial state logic from original states.py, modified to generate TPS file directly.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Perform initial validation and setup.
-        FROM: Initial validation logic from original workflow.
+        Perform initial validation and generate moqui_tps.in file.
+        FROM: Modified from original validation logic to include TPS generation.
         """
-        context.logger.info("Performing initial validation and setup", {
+        context.logger.info("Performing initial validation and moqui_tps.in generation", {
             "case_id": context.case_id,
             "case_path": str(context.case_path)
         })
@@ -58,41 +58,19 @@ class InitialState(WorkflowState):
         # Update case status
         context.case_repo.update_case_status(context.case_id, CaseStatus.PREPROCESSING)
         
-        # Validate case directory structure only (no specific file requirements)
-        # TPS file will be generated dynamically by TpsGenerationState
-        
         # Validate case directory structure
         if not context.case_path.is_dir():
             error_msg = f"Case path is not a valid directory: {context.case_path}"
             context.logger.error(error_msg, {"case_id": context.case_id})
             context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
             return FailedState()
-            
-        context.logger.info("Initial validation completed successfully", {
-            "case_id": context.case_id
-        })
         
-        return TpsGenerationState()
-
-    def get_state_name(self) -> str:
-        return "Initial Validation"
-
-class TpsGenerationState(WorkflowState):
-    """
-    TPS generation state - generates dynamic moqui_tps.in configuration file.
-    FROM: New state to replace static input.mqi dependency.
-    """
-
-    def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Generate moqui_tps.in configuration file for the case.
-        FROM: Logic extracted from legacy TPS generator service.
-        """
-        context.logger.info("Generating moqui_tps.in configuration file", {
-            "case_id": context.case_id
-        })
-        
+        # Generate moqui_tps.in configuration file
         try:
+            context.logger.info("Generating moqui_tps.in configuration file", {
+                "case_id": context.case_id
+            })
+            
             # Get GPU allocation for the case to determine GPU ID
             gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.case_id)
             if not gpu_allocation:
@@ -102,7 +80,6 @@ class TpsGenerationState(WorkflowState):
                 return FailedState()
             
             # Extract GPU ID from UUID (simplified approach)
-            # In practice, you might want to maintain a UUID->ID mapping
             gpu_id = 0  # Default to 0, could be enhanced to parse from allocation
             
             # Generate the TPS file
@@ -141,7 +118,7 @@ class TpsGenerationState(WorkflowState):
                 error_message="TPS configuration file generated successfully"
             )
             
-            context.logger.info("TPS generation completed successfully", {
+            context.logger.info("Initial validation and TPS generation completed successfully", {
                 "case_id": context.case_id,
                 "tps_file": str(tps_file)
             })
@@ -153,7 +130,7 @@ class TpsGenerationState(WorkflowState):
             if 'gpu_allocation' in locals() and gpu_allocation:
                 context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
                 
-            error_msg = f"TPS generation error: {str(e)}"
+            error_msg = f"Initial state error: {str(e)}"
             context.logger.error(error_msg, {
                 "case_id": context.case_id,
                 "exception_type": type(e).__name__
@@ -162,7 +139,8 @@ class TpsGenerationState(WorkflowState):
             return FailedState()
 
     def get_state_name(self) -> str:
-        return "TPS Generation"
+        return "Initial Validation"
+
 
 class PreprocessingState(WorkflowState):
     """
@@ -180,6 +158,29 @@ class PreprocessingState(WorkflowState):
         })
         
         try:
+            # Step 0: Validate mqi_interpreter executable path
+            executables = context.local_handler.settings.get_executables()
+            mqi_interpreter_path = executables.get("mqi_interpreter_script")
+            if mqi_interpreter_path:
+                # Format the path with base_directory if needed
+                base_dir = context.local_handler.settings.get_base_directory()
+                formatted_path = mqi_interpreter_path.format(base_directory=base_dir)
+                interpreter_file = Path(formatted_path)
+                
+                if not interpreter_file.exists():
+                    error_msg = f"mqi_interpreter script not found at: {formatted_path}"
+                    context.logger.error(error_msg, {
+                        "case_id": context.case_id,
+                        "expected_path": formatted_path
+                    })
+                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                    return FailedState()
+                    
+                context.logger.info("mqi_interpreter executable validated", {
+                    "case_id": context.case_id,
+                    "interpreter_path": formatted_path
+                })
+            
             # Step 1: Identify beam subdirectories
             beam_paths = [d for d in context.case_path.iterdir() if d.is_dir()]
             
@@ -232,9 +233,8 @@ class PreprocessingState(WorkflowState):
                 
                 # Step 4: Execute mqi_interpreter with current beam_path
                 result = context.local_handler.run_mqi_interpreter(
-                    input_file=input_file,
-                    output_dir=processing_path,
-                    case_path=beam_path  # Crucially, pass the individual beam path
+                    beam_directory=beam_path,  # Pass the individual beam directory
+                    output_dir=processing_path
                 )
                 
                 # Step 4: Robust error handling for individual beam
