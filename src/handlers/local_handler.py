@@ -6,6 +6,7 @@
 from typing import NamedTuple, Optional, Dict, Any
 from pathlib import Path
 import shlex
+import platform
 
 from src.infrastructure.logging_handler import StructuredLogger
 from src.infrastructure.process_manager import CommandExecutor
@@ -71,6 +72,26 @@ class LocalHandler:
         """
         return self.settings.get_executables().get("python_interpreter", "python3")
 
+    def _convert_windows_path_to_wsl(self, path: str) -> str:
+        """
+        Convert Windows path to WSL path if running in WSL environment.
+        
+        Args:
+            path: Path string that might be a Windows path
+            
+        Returns:
+            Path converted to WSL format if necessary
+        """
+        # Check if we're running in WSL
+        if platform.system() == "Linux" and "microsoft" in platform.release().lower():
+            # Convert Windows path to WSL path
+            if path.startswith("C:"):
+                return path.replace("C:", "/mnt/c").replace("\\", "/")
+            elif path.startswith("D:"):
+                return path.replace("D:", "/mnt/d").replace("\\", "/")
+            # Add more drive letters as needed
+        return path
+
     def _build_command_from_template(self, template_name: str, **kwargs) -> list[str]:
         """
         config.yaml의 템플릿과 동적 인자를 결합하여 최종 실행 명령어를 생성합니다.
@@ -94,8 +115,21 @@ class LocalHandler:
             template = command_templates[template_name]
             executables = self.settings.get_executables()
             
+            # Convert Windows paths to WSL paths for all executables if running in WSL
+            converted_executables = {}
+            for key, value in executables.items():
+                converted_executables[key] = self._convert_windows_path_to_wsl(value)
+            
+            # Convert Windows paths in kwargs as well
+            converted_kwargs = {}
+            for key, value in kwargs.items():
+                if isinstance(value, str):
+                    converted_kwargs[key] = self._convert_windows_path_to_wsl(value)
+                else:
+                    converted_kwargs[key] = value
+            
             # 동적 인자와 설정의 경로를 결합
-            all_format_args = {**executables, **kwargs}
+            all_format_args = {**converted_executables, **converted_kwargs}
             
             # 템플릿의 플레이스홀더를 실제 값으로 치환
             formatted_command = template.format(**all_format_args)
