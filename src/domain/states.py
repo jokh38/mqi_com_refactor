@@ -488,9 +488,9 @@ class CompletedState(WorkflowState):
         # Record workflow completion
         context.case_repo.record_workflow_step(
             case_id=context.case_id,
-            step_name="workflow_completed",
+            step=WorkflowStep.COMPLETED,
             status="completed",
-            details="Workflow successfully completed all states"
+            error_message="Workflow successfully completed all states"
         )
         
         return None  # Terminal state
@@ -531,9 +531,9 @@ class FailedState(WorkflowState):
         # Record failure in workflow steps
         context.case_repo.record_workflow_step(
             case_id=context.case_id,
-            step_name="workflow_failed",
+            step=WorkflowStep.FAILED,
             status="failed",
-            details="Workflow terminated due to error"
+            error_message="Workflow terminated due to error"
         )
         
         return None  # Terminal state
