@@ -294,15 +294,16 @@ class LocalHandler:
             return False
 
     def run_mqi_interpreter(
-        self, beam_directory: Path, output_dir: Path
+        self, beam_directory: Path, output_dir: Path, case_id: Optional[str] = None
     ) -> ExecutionResult:
         """
         mqi_interpreter 실행을 위한 Wrapper 메서드.
         템플릿에 필요한 동적 인자를 정의하고, 명령어 생성을 위임합니다.
 
         Args:
-            beam_directory: Path to the beam directory (used as --logdir).
+            beam_directory: Path to the beam directory (or case directory).
             output_dir: Path to the output directory for generated files.
+            case_id: Optional case_id. If not provided, it's inferred from the parent directory.
 
         Returns:
             ExecutionResult containing execution details.
@@ -317,9 +318,12 @@ class LocalHandler:
             "mqi_interpreter", **dynamic_args
         )
         
-        case_id = beam_directory.parent.name
+        # If case_id is not provided, infer it from the parent directory (for beam-level calls)
+        # Otherwise, use the provided case_id (for case-level calls)
+        id_to_use = case_id if case_id is not None else beam_directory.parent.name
+
         # execute_mqi_interpreter는 이제 미리 빌드된 명령어를 받아 실행만 담당
-        return self.execute_mqi_interpreter(case_id, beam_directory, command_to_execute)
+        return self.execute_mqi_interpreter(id_to_use, beam_directory, command_to_execute)
 
     def run_raw_to_dcm(
         self, input_file: Path, output_dir: Path, case_path: Path

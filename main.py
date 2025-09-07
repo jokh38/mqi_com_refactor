@@ -44,7 +44,7 @@ from src.infrastructure.gpu_monitor import GpuMonitor
 from src.handlers.remote_handler import RemoteHandler
 from src.utils.retry_policy import RetryPolicy
 from src.core.worker import worker_main
-from src.core.dispatcher import prepare_beam_jobs
+from src.core.dispatcher import prepare_beam_jobs, run_case_level_preprocessing
 
 
 def scan_existing_cases(case_queue: mp.Queue, settings: Settings, logger: StructuredLogger) -> None:
@@ -357,9 +357,17 @@ class MQIApplication:
                         case_id = case_data["case_id"]
                         case_path = Path(case_data["case_path"])
 
-                        self.logger.info(f"Dispatching case: {case_id}")
+                        self.logger.info(f"Processing new case: {case_id}")
 
-                        # Get the list of beam jobs to run
+                        # Step 1: Run case-level preprocessing
+                        preprocessing_success = run_case_level_preprocessing(case_id, case_path, self.settings)
+
+                        if not preprocessing_success:
+                            self.logger.error(f"Case-level preprocessing failed for {case_id}. Skipping this case.")
+                            continue
+
+                        # Step 2: If preprocessing is successful, prepare and submit beam jobs
+                        self.logger.info(f"Dispatching beams for case: {case_id}")
                         beam_jobs = prepare_beam_jobs(case_id, case_path, self.settings)
 
                         # Submit a worker for each beam

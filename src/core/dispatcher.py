@@ -9,7 +9,107 @@ from src.config.settings import Settings
 from src.database.connection import DatabaseConnection
 from src.repositories.case_repo import CaseRepository
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.enums import CaseStatus
+from src.domain.enums import CaseStatus, WorkflowStep
+from src.handlers.local_handler import LocalHandler
+from src.infrastructure.process_manager import CommandExecutor
+from src.utils.retry_policy import RetryPolicy
+from src.domain.errors import ProcessingError
+
+
+def run_case_level_preprocessing(case_id: str, case_path: Path, settings: Settings) -> bool:
+    """
+    Runs the mqi_interpreter for the entire case before beam-level processing.
+
+    Args:
+        case_id: The ID of the case.
+        case_path: The file system path to the case directory.
+        settings: The application settings object.
+
+    Returns:
+        True if preprocessing was successful, False otherwise.
+    """
+    logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
+    db_connection = None
+    try:
+        # Setup dependencies for LocalHandler
+        command_executor = CommandExecutor(logger)
+        retry_policy = RetryPolicy(
+            max_attempts=settings.retry_policy.max_retries,
+            base_delay=settings.retry_policy.initial_delay_seconds,
+            max_delay=settings.retry_policy.max_delay_seconds,
+            backoff_multiplier=settings.retry_policy.backoff_multiplier,
+            logger=logger,
+        )
+        local_handler = LocalHandler(
+            settings=settings,
+            logger=logger,
+            command_executor=command_executor,
+            retry_policy=retry_policy,
+        )
+
+        # Establish database connection to record workflow step
+        db_path = settings.get_database_path()
+        db_connection = DatabaseConnection(
+            db_path=db_path, config=settings.database, logger=logger
+        )
+        case_repo = CaseRepository(db_connection, logger)
+
+        logger.info(f"Starting case-level preprocessing for: {case_id}")
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.PREPROCESSING,
+            status="started",
+            metadata={"message": "Running mqi_interpreter for the whole case."}
+        )
+
+        # The output of the case-level interpreter should go into the case directory itself
+        # from where beam-level workflows can pick up the results.
+        result = local_handler.run_mqi_interpreter(
+            beam_directory=case_path,
+            output_dir=case_path,
+            case_id=case_id
+        )
+
+        if not result.success:
+            error_message = f"Case-level mqi_interpreter failed for '{case_id}'. Error: {result.error}"
+            raise ProcessingError(error_message)
+
+        # Verify that CSV files were created for each beam
+        beam_dirs = [d for d in case_path.iterdir() if d.is_dir()]
+        for beam_dir in beam_dirs:
+            if not any(beam_dir.glob("*.csv")):
+                logger.warning(f"No CSV files found in beam directory {beam_dir.name} after case-level preprocessing.")
+                # Depending on requirements, this could be a fatal error for the case.
+                # For now, we'll log a warning and proceed.
+
+        logger.info(f"Case-level preprocessing completed successfully for: {case_id}")
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.PREPROCESSING,
+            status="completed",
+            metadata={"message": "mqi_interpreter finished successfully for the whole case."}
+        )
+        return True
+
+    except Exception as e:
+        logger.error("Case-level preprocessing failed", {"case_id": case_id, "error": str(e)})
+        if db_connection:
+            try:
+                case_repo = CaseRepository(db_connection, logger)
+                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message=str(e))
+                case_repo.record_workflow_step(
+                    case_id=case_id,
+                    step=WorkflowStep.PREPROCESSING,
+                    status="failed",
+                    metadata={"error": str(e)}
+                )
+            except Exception as db_e:
+                logger.error("Failed to update case status during preprocessing error", {"case_id": case_id, "db_error": str(db_e)})
+        return False
+    finally:
+        if db_connection:
+            db_connection.close()
+
 
 def prepare_beam_jobs(
     case_id: str, case_path: Path, settings: Settings

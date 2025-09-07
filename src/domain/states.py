@@ -127,53 +127,10 @@ class InitialState(WorkflowState):
             "tps_file": str(tps_file)
         })
 
-        return PreprocessingState()
-
-    def get_state_name(self) -> str:
-        return "Initial Validation"
-
-
-class PreprocessingState(WorkflowState):
-    """
-    Preprocessing state - runs mqi_interpreter locally for a single beam.
-    """
-
-    @handle_state_exceptions
-    def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Execute local preprocessing using mqi_interpreter for the given beam.
-        """
-        context.logger.info("Running mqi_interpreter preprocessing for beam", {
-            "beam_id": context.id
-        })
-        
-        beam_path = context.path
-        input_file = beam_path / "moqui_tps.in"
-        if not input_file.exists():
-            raise ProcessingError(f"moqui_tps.in file not found in beam directory: {input_file}")
-
-        result = context.local_handler.run_mqi_interpreter(
-            beam_directory=beam_path,
-            output_dir=beam_path
-        )
-
-        if not result.success:
-            raise ProcessingError(f"mqi_interpreter failed for beam '{context.id}'. Error: {result.error}")
-
-        csv_files = list(beam_path.glob("*.csv"))
-        if not csv_files:
-            raise ProcessingError("No CSV files generated after preprocessing beam")
-            
-        context.logger.info("Preprocessing completed successfully for beam", {
-            "beam_id": context.id,
-            "beam_path": str(beam_path),
-            "csv_files_count": len(csv_files)
-        })
-
         return FileUploadState()
 
     def get_state_name(self) -> str:
-        return "Preprocessing"
+        return "Initial Validation"
 
 class FileUploadState(WorkflowState):
     """
