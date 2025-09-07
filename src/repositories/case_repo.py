@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.database.connection import DatabaseConnection
-from src.domain.enums import CaseStatus, WorkflowStep
-from src.domain.models import CaseData, WorkflowStepRecord
+from src.domain.enums import BeamStatus, CaseStatus, WorkflowStep
+from src.domain.models import BeamData, CaseData, WorkflowStepRecord
 from src.infrastructure.logging_handler import StructuredLogger
 from src.repositories.base import BaseRepository
 
@@ -338,6 +338,113 @@ class CaseRepository(BaseRepository):
         self.logger.info(
             "GPU assigned to case", {"case_id": case_id, "gpu_uuid": gpu_uuid}
         )
+
+    # =================================================================================
+    # Beam-specific methods
+    # =================================================================================
+
+    def create_beam_record(
+        self, beam_id: str, parent_case_id: str, beam_path: Path
+    ) -> None:
+        """Adds a new beam to the 'beams' table."""
+        self._log_operation(
+            "create_beam_record",
+            beam_id=beam_id,
+            parent_case_id=parent_case_id,
+            beam_path=str(beam_path),
+        )
+        query = """
+            INSERT INTO beams (beam_id, parent_case_id, beam_path, status, created_at, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """
+        self._execute_query(
+            query,
+            (
+                beam_id,
+                parent_case_id,
+                str(beam_path),
+                BeamStatus.PENDING.value,
+            ),
+        )
+        self.logger.info("Beam record created successfully", {"beam_id": beam_id})
+
+    def update_beam_status(
+        self, beam_id: str, status: BeamStatus, error_message: Optional[str] = None
+    ) -> None:
+        """Updates the status of a beam."""
+        self._log_operation(
+            "update_beam_status", beam_id=beam_id, status=status.value
+        )
+        set_clauses = ["status = ?", "updated_at = CURRENT_TIMESTAMP"]
+        params = [status.value]
+
+        if error_message is not None:
+            set_clauses.append("error_message = ?")
+            params.append(error_message)
+
+        params.append(beam_id)
+        query = f"UPDATE beams SET {', '.join(set_clauses)} WHERE beam_id = ?"
+        self._execute_query(query, tuple(params))
+        self.logger.info(
+            "Beam status updated", {"beam_id": beam_id, "status": status.value}
+        )
+
+    def get_beam(self, beam_id: str) -> Optional[BeamData]:
+        """Retrieves a single beam by its ID."""
+        self._log_operation("get_beam", beam_id=beam_id)
+        query = "SELECT * FROM beams WHERE beam_id = ?"
+        row = self._execute_query(query, (beam_id,), fetch_one=True)
+        if row:
+            return BeamData(
+                beam_id=row["beam_id"],
+                parent_case_id=row["parent_case_id"],
+                beam_path=Path(row["beam_path"]),
+                status=BeamStatus(row["status"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+                updated_at=(
+                    datetime.fromisoformat(row["updated_at"])
+                    if row["updated_at"]
+                    else None
+                ),
+                hpc_job_id=row["hpc_job_id"],
+            )
+        return None
+
+    def assign_hpc_job_id_to_beam(self, beam_id: str, hpc_job_id: str) -> None:
+        """Assigns an HPC job ID to a specific beam."""
+        self._log_operation(
+            "assign_hpc_job_id_to_beam", beam_id=beam_id, hpc_job_id=hpc_job_id
+        )
+        query = "UPDATE beams SET hpc_job_id = ?, updated_at = CURRENT_TIMESTAMP WHERE beam_id = ?"
+        self._execute_query(query, (hpc_job_id, beam_id))
+        self.logger.info(
+            "HPC job ID assigned to beam",
+            {"beam_id": beam_id, "hpc_job_id": hpc_job_id},
+        )
+
+    def get_beams_for_case(self, case_id: str) -> List[BeamData]:
+        """Retrieves all beams associated with a given case."""
+        self._log_operation("get_beams_for_case", case_id=case_id)
+        query = "SELECT * FROM beams WHERE parent_case_id = ? ORDER BY beam_id ASC"
+        rows = self._execute_query(query, (case_id,), fetch_all=True)
+        beams = []
+        for row in rows:
+            beams.append(
+                BeamData(
+                    beam_id=row["beam_id"],
+                    parent_case_id=row["parent_case_id"],
+                    beam_path=Path(row["beam_path"]),
+                    status=BeamStatus(row["status"]),
+                    created_at=datetime.fromisoformat(row["created_at"]),
+                    updated_at=(
+                        datetime.fromisoformat(row["updated_at"])
+                        if row["updated_at"]
+                        else None
+                    ),
+                    hpc_job_id=row["hpc_job_id"],
+                )
+            )
+        return beams
 
     def get_all_active_cases(self) -> List[CaseData]:
         """

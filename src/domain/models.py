@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any, List
 from pathlib import Path
 from datetime import datetime
 
-from src.domain.enums import CaseStatus, GpuStatus, WorkflowStep
+from src.domain.enums import CaseStatus, GpuStatus, WorkflowStep, BeamStatus
 
 @dataclass
 class CaseData:
@@ -24,6 +24,19 @@ class CaseData:
     updated_at: Optional[datetime] = None
     error_message: Optional[str] = None
     assigned_gpu: Optional[str] = None
+
+@dataclass
+class BeamData:
+    """
+    Data Transfer Object for beam information.
+    """
+    beam_id: str
+    parent_case_id: str
+    beam_path: Path
+    status: BeamStatus
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    hpc_job_id: Optional[str] = None
 
 @dataclass
 class GpuResource:

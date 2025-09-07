@@ -92,7 +92,7 @@ class GpuMonitor:
         try:
             # Execute nvidia-smi command remotely
             result = self.remote_handler.execute_remote_command(
-                case_id="gpu_monitoring", # A generic ID for this operation
+                context_id="gpu_monitoring", # A generic ID for this operation
                 command=NVIDIA_SMI_QUERY_COMMAND
             )
 

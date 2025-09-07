@@ -46,5 +46,7 @@ def temp_db(tmp_path):
 def db_connection(temp_db, db_config, logger):
     """Pytest fixture to create a DatabaseConnection instance."""
     conn = DatabaseConnection(db_path=temp_db, config=db_config, logger=logger)
+    # Ensure the schema is created for each test session
+    conn.init_db()
     yield conn
     conn.close()

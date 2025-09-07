@@ -160,69 +160,8 @@ class RemoteHandler:
         if not self._connected or not self._ssh_client:
             self.connect()
 
-    def upload_case(self, case_id: str, local_path: Path, remote_path: str) -> bool:
-        """
-        Upload case files to HPC system.
-
-        FROM: File upload functionality from original remote_handler.py.
-        REFACTORING NOTES: Uses retry policy and improved error handling.
-
-        Args:
-            case_id: Case identifier for logging
-            local_path: Local path to case directory
-            remote_path: Remote path where case should be uploaded
-
-        Returns:
-            True if upload successful
-        """
-        self.logger.info(
-            "Uploading case to HPC",
-            {
-                "case_id": case_id,
-                "local_path": str(local_path),
-                "remote_path": remote_path,
-            },
-        )
-
-        def upload_attempt():
-            self._ensure_connected()
-
-            if not self._sftp_client:
-                raise ProcessingError("SFTP client not available")
-
-            for root, _, files in os.walk(local_path):
-                remote_root = Path(remote_path) / os.path.relpath(root, local_path)
-                self._mkdir_p(self._sftp_client, str(remote_root).replace("\\", "/"))
-
-                for file in files:
-                    local_file_path = Path(root) / file
-                    remote_file_path = remote_root / file
-                    self._sftp_client.put(
-                        str(local_file_path), str(remote_file_path).replace("\\", "/")
-                    )
-
-            self.logger.info(
-                "Case upload completed",
-                {"case_id": case_id, "remote_path": remote_path},
-            )
-
-            return True
-
-        try:
-            return self.retry_policy.execute(
-                upload_attempt,
-                operation_name="case_upload",
-                context={"case_id": case_id},
-            )
-        except Exception as e:
-            self.logger.error(
-                "Case upload failed after retries",
-                {"case_id": case_id, "error": str(e)},
-            )
-            return False
-
     def execute_remote_command(
-        self, case_id: str, command: str, remote_cwd: Optional[str] = None
+        self, context_id: str, command: str, remote_cwd: Optional[str] = None
     ) -> ExecutionResult:
         """
         Execute a command on the remote HPC system.
@@ -231,7 +170,7 @@ class RemoteHandler:
         REFACTORING NOTES: Improved error handling and result processing.
 
         Args:
-            case_id: Case identifier for logging
+            context_id: An identifier for the operation for logging purposes (e.g., beam_id, 'gpu_monitoring').
             command: Command to execute
             remote_cwd: Remote working directory (optional)
 
@@ -240,7 +179,7 @@ class RemoteHandler:
         """
         self.logger.info(
             "Executing remote command",
-            {"case_id": case_id, "command": command, "remote_cwd": remote_cwd},
+            {"context_id": context_id, "command": command, "remote_cwd": remote_cwd},
         )
 
         def execute_attempt():
@@ -273,14 +212,14 @@ class RemoteHandler:
             result = self.retry_policy.execute(
                 execute_attempt,
                 operation_name="remote_command",
-                context={"case_id": case_id, "command": command},
+                context={"context_id": context_id, "command": command},
             )
 
             if result.success:
                 self.logger.info(
                     "Remote command completed successfully",
                     {
-                        "case_id": case_id,
+                        "context_id": context_id,
                         "command": command,
                         "output_length": len(result.output),
                     },
@@ -289,7 +228,7 @@ class RemoteHandler:
                 self.logger.error(
                     "Remote command failed",
                     {
-                        "case_id": case_id,
+                        "context_id": context_id,
                         "command": command,
                         "return_code": result.return_code,
                         "error": result.error,
@@ -301,93 +240,25 @@ class RemoteHandler:
         except Exception as e:
             self.logger.error(
                 "Remote command execution failed after retries",
-                {"case_id": case_id, "command": command, "error": str(e)},
+                {"context_id": context_id, "command": command, "error": str(e)},
             )
 
             return ExecutionResult(
                 success=False, output="", error=str(e), return_code=-1
             )
 
-    def download_results(
-        self, case_id: str, remote_path: str, local_path: Path
-    ) -> bool:
-        """
-        Download case results from HPC system.
-
-        FROM: File download functionality from original remote_handler.py.
-        REFACTORING NOTES: Uses retry policy and improved error handling.
-
-        Args:
-            case_id: Case identifier for logging
-            remote_path: Remote path to results directory
-            local_path: Local path where results should be downloaded
-
-        Returns:
-            True if download successful
-        """
-        self.logger.info(
-            "Downloading case results from HPC",
-            {
-                "case_id": case_id,
-                "remote_path": remote_path,
-                "local_path": str(local_path),
-            },
-        )
-
-        def download_attempt():
-            self._ensure_connected()
-
-            if not self._sftp_client:
-                raise ProcessingError("SFTP client not available")
-
-            # Ensure local directory exists
-            local_path.mkdir(parents=True, exist_ok=True)
-
-            for item in self._sftp_client.listdir_attr(remote_path):
-                remote_item_path = f"{remote_path}/{item.filename}"
-                local_item_path = local_path / item.filename
-
-                if item.st_mode & 0o40000:  # Check if it is a directory
-                    self.download_results(case_id, remote_item_path, local_item_path)
-                else:
-                    self._sftp_client.get(remote_item_path, str(local_item_path))
-
-            self.logger.info(
-                "Case results download completed",
-                {"case_id": case_id, "local_path": str(local_path)},
-            )
-
-            return True
-
-        try:
-            return self.retry_policy.execute(
-                download_attempt,
-                operation_name="results_download",
-                context={"case_id": case_id},
-            )
-        except Exception as e:
-            self.logger.error(
-                "Results download failed after retries",
-                {"case_id": case_id, "error": str(e)},
-            )
-            return False
-
-    def check_job_status(self, case_id: str, job_id: str) -> Dict[str, Any]:
+    def check_job_status(self, job_id: str) -> Dict[str, Any]:
         """
         Check the status of a submitted job on HPC system.
 
-        FROM: Job status checking from original remote_handler.py.
-        REFACTORING: This is no longer a placeholder and now actively checks job status.
-
         Args:
-            case_id: Case identifier for logging (used for context)
             job_id: HPC job identifier
 
         Returns:
             Dictionary containing job status information
         """
         self.logger.debug(
-            "Checking HPC job status", {"case_id": case_id, "job_id": job_id}
+            "Checking HPC job status", {"job_id": job_id}
         )
 
         status_command = f"squeue -j {job_id} --noheader -o %T"
@@ -474,46 +345,44 @@ class RemoteHandler:
             return UploadResult(success=False, error=error_msg)
 
     def submit_simulation_job(
-        self, case_id: str, remote_case_dir: str, remote_csv_dir: str, gpu_uuid: str
+        self, beam_id: str, remote_beam_dir: str, gpu_uuid: str
     ) -> JobSubmissionResult:
         """
-        Submit a MOQUI simulation job to the HPC system with dynamic CSV input path.
+        Submit a MOQUI simulation job to the HPC system for a single beam.
 
         Args:
-            case_id: Case identifier
-            remote_case_dir: Remote directory for job execution
-            remote_csv_dir: Remote directory containing CSV input files
-            gpu_uuid: GPU UUID to use for simulation
+            beam_id: Beam identifier.
+            remote_beam_dir: Remote directory for job execution, containing all necessary files.
+            gpu_uuid: GPU UUID to use for simulation.
 
         Returns:
-            JobSubmissionResult with job ID if successful
+            JobSubmissionResult with job ID if successful.
         """
         self.logger.info(
-            "Submitting HPC simulation job with dynamic CSV path",
+            "Submitting HPC simulation job for beam",
             {
-                "case_id": case_id,
-                "remote_case_dir": remote_case_dir,
-                "remote_csv_dir": remote_csv_dir,
+                "beam_id": beam_id,
+                "remote_beam_dir": remote_beam_dir,
                 "gpu_uuid": gpu_uuid,
             },
         )
 
         try:
-            # Create job submission script with dynamic CSV input path
+            # The input directory for the simulator is the beam directory itself
             job_script = f"""#!/bin/bash
-#SBATCH --job-name=moqui_{case_id}
-#SBATCH --output={remote_case_dir}/simulation.log
-#SBATCH --error={remote_case_dir}/simulation.err
+#SBATCH --job-name=moqui_{beam_id}
+#SBATCH --output={remote_beam_dir}/simulation.log
+#SBATCH --error={remote_beam_dir}/simulation.err
 #SBATCH --gres=gpu:1
 #SBATCH --time=01:00:00
 
-cd {remote_case_dir}
+cd {remote_beam_dir}
 export CUDA_VISIBLE_DEVICES={gpu_uuid}
-/usr/local/bin/moqui_simulator --input {remote_csv_dir} --output output.raw
+/usr/local/bin/moqui_simulator --input . --output output.raw
 """
 
             # Write job script to remote system
-            job_script_path = f"{remote_case_dir}/submit_job.sh"
+            job_script_path = f"{remote_beam_dir}/submit_job.sh"
 
             self._ensure_connected()
             if not self._sftp_client:
@@ -527,7 +396,7 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
 
             # Submit the job
             submit_command = f"sbatch {job_script_path}"
-            result = self.execute_remote_command(case_id, submit_command)
+            result = self.execute_remote_command(beam_id, submit_command)
 
             if not result.success:
                 return JobSubmissionResult(
@@ -551,14 +420,14 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
                 )
 
             self.logger.info(
-                "HPC job submitted successfully", {"case_id": case_id, "job_id": job_id}
+                "HPC job submitted successfully for beam", {"beam_id": beam_id, "job_id": job_id}
             )
 
             return JobSubmissionResult(success=True, job_id=job_id)
 
         except Exception as e:
             error_msg = f"Job submission error: {e}"
-            self.logger.error(error_msg, {"case_id": case_id})
+            self.logger.error(error_msg, {"beam_id": beam_id})
             return JobSubmissionResult(success=False, error=error_msg)
 
     def wait_for_job_completion(

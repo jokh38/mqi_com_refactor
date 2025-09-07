@@ -12,7 +12,7 @@ from src.handlers.local_handler import LocalHandler
 from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
 from src.core.tps_generator import TpsGenerator
-from src.domain.enums import CaseStatus
+from src.domain.enums import CaseStatus, BeamStatus
 from src.domain.states import WorkflowState, InitialState
 
 
@@ -33,8 +33,8 @@ class WorkflowManager:
         remote_handler: RemoteHandler,
         tps_generator: TpsGenerator,
         logger: StructuredLogger,
-        case_id: str,
-        case_path: Path
+        id: str,
+        path: Path,
     ):
         """
         Initializes the workflow manager with all required dependencies.
@@ -45,8 +45,8 @@ class WorkflowManager:
         self.remote_handler = remote_handler
         self.tps_generator = tps_generator
         self.logger = logger
-        self.case_id = case_id
-        self.case_path = case_path
+        self.id = id
+        self.path = path
         self.current_state: Optional[WorkflowState] = InitialState()
         self.shared_context: Dict[str, Any] = {}
 
@@ -60,7 +60,7 @@ class WorkflowManager:
         - Handle state transitions using the injected repositories and handlers
         - Ensure proper error handling and logging throughout the workflow
         """
-        self.logger.info(f"Starting workflow for case: {self.case_id}")
+        self.logger.info(f"Starting workflow for: {self.id}")
 
         while self.current_state:
             state_name = self.current_state.get_state_name()
@@ -73,7 +73,7 @@ class WorkflowManager:
                 self._handle_workflow_error(e, f"Error during state: {state_name}")
                 break
 
-        self.logger.info(f"Workflow finished for case: {self.case_id}")
+        self.logger.info(f"Workflow finished for: {self.id}")
 
     def _transition_to_next_state(self, next_state: WorkflowState) -> None:
         """
@@ -93,7 +93,7 @@ class WorkflowManager:
         self.logger.error(
             "Workflow error occurred",
             {
-                "case_id": self.case_id,
+                "id": self.id,
                 "context": context,
                 "error": str(error),
                 "error_type": type(error).__name__,
@@ -102,22 +102,20 @@ class WorkflowManager:
         )
 
         try:
-            # Fetch the current case to get its progress before marking it as failed
-            case = self.case_repo.get_case(self.case_id)
-            current_progress = case.progress if case else 0.0
-
-            self.case_repo.update_case_status(
-                self.case_id,
-                CaseStatus.FAILED,
-                progress=current_progress,
+            # This logic is now beam-specific. The calling state should handle status updates.
+            # For now, we'll assume the worker is for a beam and try to update beam status.
+            # This part will need more refinement when states are refactored.
+            self.case_repo.update_beam_status(
+                self.id,
+                BeamStatus.FAILED,
                 error_message=str(error),
             )
-            self.logger.info(f"Case status updated to FAILED for case: {self.case_id}")
+            self.logger.info(f"Beam status updated to FAILED for: {self.id}")
         except Exception as db_error:
             self.logger.error(
-                "Failed to update case status during error handling",
+                "Failed to update status during error handling",
                 {
-                    "case_id": self.case_id,
+                    "id": self.id,
                     "db_error": str(db_error)
                 }
             )

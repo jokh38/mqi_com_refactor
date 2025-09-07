@@ -20,30 +20,23 @@ from src.core.tps_generator import TpsGenerator
 from src.config.settings import Settings, DatabaseConfig, HandlerConfig, LoggingConfig
 
 
-def worker_main(case_id: str, case_path: Path, settings: Settings) -> None:
+def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
     """
-    Acts as the "assembly line" that creates all dependency objects for a single case
+    Acts as the "assembly line" that creates all dependency objects for a single beam
     and injects them into the WorkflowManager to start the process.
 
-    FROM: Migrated from the existing `worker_main` in `worker.py` and the object
-          initialization logic from `main.py`.
-
-    RESPONSIBILITY:
-    - Create all objects (DatabaseConnection, repositories, handlers, etc.)
-    - Inject them into WorkflowManager
-    - Call run_workflow()
-    - Include 'Fail-Fast' path validation logic
+    This function is executed by a worker process for each beam.
 
     Args:
-        case_id: Unique identifier for the case
-        case_path: Path to the case directory
-        settings: Settings object containing all configuration
+        beam_id: Unique identifier for the beam.
+        beam_path: Path to the beam directory.
+        settings: Settings object containing all configuration.
     """
-    logger = StructuredLogger(f"worker_{case_id}", config=settings.logging)
+    logger = StructuredLogger(f"worker_{beam_id}", config=settings.logging)
 
     db_connection = None
     try:
-        _validate_case_path(case_path, logger)
+        _validate_beam_path(beam_path, logger)
 
         # Use database path from settings
         db_path = settings.get_database_path()
@@ -75,40 +68,38 @@ def worker_main(case_id: str, case_path: Path, settings: Settings) -> None:
             remote_handler=remote_handler,
             tps_generator=tps_generator,
             logger=logger,
-            case_id=case_id,
-            case_path=case_path,
+            id=beam_id,
+            path=beam_path,
         )
 
         workflow_manager.run_workflow()
 
     except Exception as e:
-        logger.error(f"Worker failed for case {case_id}", {"error": str(e), "error_type": type(e).__name__})
+        logger.error(f"Worker failed for beam {beam_id}", {"error": str(e), "error_type": type(e).__name__})
         # Optionally re-raise or handle specific exceptions
         raise
     finally:
         if db_connection:
             db_connection.close()
-        logger.info(f"Worker finished for case {case_id}")
+        logger.info(f"Worker finished for beam {beam_id}")
 
 
-def _validate_case_path(case_path: Path, logger: StructuredLogger) -> None:
+def _validate_beam_path(beam_path: Path, logger: StructuredLogger) -> None:
     """
-    Performs 'Fail-Fast' validation of the case path.
-
-    FROM: Path validation logic from the original worker implementation.
+    Performs 'Fail-Fast' validation of the beam path.
 
     Args:
-        case_path: Path to validate
-        logger: Logger instance for error reporting
+        beam_path: Path to validate.
+        logger: Logger instance for error reporting.
 
     Raises:
-        ValueError: If the path is invalid or inaccessible
+        ValueError: If the path is invalid or inaccessible.
     """
-    if not case_path.exists():
-        logger.error(f"Validation failed: Case path does not exist: {case_path}")
-        raise ValueError(f"Case path does not exist: {case_path}")
-    if not case_path.is_dir():
-        logger.error(f"Validation failed: Case path is not a directory: {case_path}")
-        raise ValueError(f"Case path is not a directory: {case_path}")
+    if not beam_path.exists():
+        logger.error(f"Validation failed: Beam path does not exist: {beam_path}")
+        raise ValueError(f"Beam path does not exist: {beam_path}")
+    if not beam_path.is_dir():
+        logger.error(f"Validation failed: Beam path is not a directory: {beam_path}")
+        raise ValueError(f"Beam path is not a directory: {beam_path}")
 
 
