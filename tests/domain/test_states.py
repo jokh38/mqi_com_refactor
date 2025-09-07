@@ -4,7 +4,6 @@ from pathlib import Path
 
 from src.domain.states import (
     InitialState,
-    PreprocessingState,
     FileUploadState,
     HpcExecutionState,
     DownloadState,
@@ -61,7 +60,7 @@ def test_initial_state_success(mock_context):
     mock_context.case_repo.update_beam_status.assert_called_once_with(
         mock_context.id, BeamStatus.PREPROCESSING
     )
-    assert isinstance(next_state, PreprocessingState)
+    assert isinstance(next_state, FileUploadState)
 
 
 def test_initial_state_path_is_not_dir(mock_context):
@@ -81,55 +80,6 @@ def test_initial_state_path_is_not_dir(mock_context):
 
 def test_initial_state_get_name():
     assert InitialState().get_state_name() == "Initial Validation"
-
-
-# --- Tests for PreprocessingState ---
-
-def test_preprocessing_state_success(mock_context):
-    state = PreprocessingState()
-    
-    # Mock that moqui_tps.in exists in the beam path
-    (mock_context.path / "moqui_tps.in").exists.return_value = True
-    
-    # Mock a successful interpreter run
-    mock_context.local_handler.run_mqi_interpreter.return_value = Mock(success=True)
-    
-    # Mock that CSV files were created
-    mock_context.path.glob.return_value = ["file1.csv"]
-
-    next_state = state.execute(mock_context)
-
-    mock_context.local_handler.run_mqi_interpreter.assert_called_once_with(
-        beam_directory=mock_context.path,
-        output_dir=mock_context.path
-    )
-    assert isinstance(next_state, FileUploadState)
-
-
-def test_preprocessing_state_interpreter_fails(mock_context):
-    from src.domain.enums import BeamStatus
-    state = PreprocessingState()
-    
-    # Mock that moqui_tps.in exists
-    (mock_context.path / "moqui_tps.in").exists.return_value = True
-    
-    # Mock a failed interpreter run
-    original_error = f"mqi_interpreter failed for beam '{mock_context.id}'. Error: Interpreter failed"
-    mock_context.local_handler.run_mqi_interpreter.return_value = Mock(
-        success=False, error="Interpreter failed"
-    )
-    
-    next_state = state.execute(mock_context)
-
-    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
-    mock_context.case_repo.update_beam_status.assert_called_once_with(
-        mock_context.id, BeamStatus.FAILED, error_message=expected_error
-    )
-    assert isinstance(next_state, FailedState)
-
-
-def test_preprocessing_state_get_name():
-    assert PreprocessingState().get_state_name() == "Preprocessing"
 
 
 # --- Tests for FileUploadState ---
