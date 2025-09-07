@@ -71,8 +71,10 @@ def test_initial_state_path_is_not_dir(mock_context):
 
     next_state = state.execute(mock_context)
 
+    original_error = f"Beam path is not a valid directory: {mock_context.path}"
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_with(
-        mock_context.id, BeamStatus.FAILED, error_message=f"Beam path is not a valid directory: {mock_context.path}"
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
 
@@ -112,14 +114,16 @@ def test_preprocessing_state_interpreter_fails(mock_context):
     (mock_context.path / "moqui_tps.in").exists.return_value = True
     
     # Mock a failed interpreter run
+    original_error = f"mqi_interpreter failed for beam '{mock_context.id}'. Error: Interpreter failed"
     mock_context.local_handler.run_mqi_interpreter.return_value = Mock(
         success=False, error="Interpreter failed"
     )
     
     next_state = state.execute(mock_context)
 
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_once_with(
-        mock_context.id, BeamStatus.FAILED, error_message="mqi_interpreter failed for beam 'test-case-001_beam_1'. Error: Interpreter failed"
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
 
@@ -163,12 +167,14 @@ def test_file_upload_state_upload_fails(mock_context):
     mock_context.local_handler.settings.get_hpc_paths.return_value = {"remote_case_path_template": "/remote/cases"}
 
     # Mock a failed upload
+    original_error = "Failed to upload file file1.csv: Permission denied"
     mock_context.remote_handler.upload_file.return_value = Mock(success=False, error="Permission denied")
 
     next_state = state.execute(mock_context)
 
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_with(
-        mock_context.id, BeamStatus.FAILED, error_message="Failed to upload file file1.csv: Permission denied"
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
 
@@ -245,8 +251,10 @@ def test_hpc_execution_state_no_gpu(mock_context):
 
     next_state = state.execute(mock_context)
 
+    original_error = "No GPU available for simulation"
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_with(
-        mock_context.id, BeamStatus.FAILED, error_message="No GPU available for simulation"
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
 
@@ -284,8 +292,10 @@ def test_download_state_main_file_missing(mock_context):
         (mock_local_result_dir / mock_context.id / "output.raw").exists.return_value = False
         next_state = state.execute(mock_context)
 
+    original_error = "Main output file 'output.raw' was not downloaded."
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_with(
-        mock_context.id, BeamStatus.FAILED, error_message="Main output file 'output.raw' was not downloaded."
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
 
@@ -324,11 +334,13 @@ def test_postprocessing_state_dcm_fails(mock_context):
     mock_raw_file = MagicMock(spec=Path)
     mock_raw_file.exists.return_value = True
     mock_context.shared_context["raw_output_file"] = mock_raw_file
+    original_error = f"RawToDCM failed for beam {mock_context.id}: DCM conversion failed"
     mock_context.local_handler.run_raw_to_dcm.return_value = Mock(success=False, error="DCM conversion failed")
 
     next_state = state.execute(mock_context)
 
+    expected_error = f"Error in state '{state.get_state_name()}' for beam '{mock_context.id}': {original_error}"
     mock_context.case_repo.update_beam_status.assert_called_with(
-        mock_context.id, BeamStatus.FAILED, error_message="RawToDCM failed for beam test-case-001_beam_1: DCM conversion failed"
+        mock_context.id, BeamStatus.FAILED, error_message=expected_error
     )
     assert isinstance(next_state, FailedState)
