@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Optional
 if TYPE_CHECKING:
     from src.core.workflow_manager import WorkflowManager
 
-from src.domain.enums import CaseStatus, WorkflowStep
+from src.core.case_aggregator import update_case_status_from_beams
+from src.domain.enums import BeamStatus, CaseStatus, WorkflowStep
 from src.domain.errors import ProcessingError
 from pathlib import Path
 
@@ -41,101 +42,98 @@ class WorkflowState(ABC):
 
 class InitialState(WorkflowState):
     """
-    Initial state for new cases - validates case structure and dynamically generates moqui_tps.in.
-    FROM: Initial state logic from original states.py, modified to generate TPS file directly.
+    Initial state for a new beam - validates beam structure and generates moqui_tps.in.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Perform initial validation and generate moqui_tps.in file.
-        FROM: Modified from original validation logic to include TPS generation.
+        Perform initial validation for the beam and generate its moqui_tps.in file.
         """
-        context.logger.info("Performing initial validation and moqui_tps.in generation", {
-            "case_id": context.case_id,
-            "case_path": str(context.case_path)
+        context.logger.info("Performing initial validation and moqui_tps.in generation for beam", {
+            "beam_id": context.id,
+            "beam_path": str(context.path)
         })
         
-        # Update case status
-        context.case_repo.update_case_status(context.case_id, CaseStatus.PREPROCESSING)
+        # Update beam status
+        context.case_repo.update_beam_status(context.id, BeamStatus.PREPROCESSING)
         
-        # Validate case directory structure
-        if not context.case_path.is_dir():
-            error_msg = f"Case path is not a valid directory: {context.case_path}"
-            context.logger.error(error_msg, {"case_id": context.case_id})
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+        # Validate beam directory structure
+        if not context.path.is_dir():
+            error_msg = f"Beam path is not a valid directory: {context.path}"
+            context.logger.error(error_msg, {"beam_id": context.id})
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
         
-        # Generate moqui_tps.in configuration file
+        # Generate moqui_tps.in configuration file for the beam
         try:
             context.logger.info("Generating moqui_tps.in configuration file", {
-                "case_id": context.case_id
+                "beam_id": context.id
             })
             
-            # Get GPU allocation for the case to determine GPU ID
-            gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.case_id)
+            # Get GPU allocation for the beam to determine GPU ID
+            # Note: GPU is locked per beam job now
+            gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.id)
             if not gpu_allocation:
                 error_msg = "No GPU available for TPS generation"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Extract GPU ID from UUID (simplified approach)
             gpu_id = 0  # Default to 0, could be enhanced to parse from allocation
             
-            # Generate the TPS file
+            # Generate the TPS file inside the beam directory
             success = context.tps_generator.generate_tps_file(
-                case_path=context.case_path,
-                case_id=context.case_id,
+                case_path=context.path, # This is now the beam path
+                case_id=context.id,   # This is now the beam id
                 gpu_id=gpu_id,
-                execution_mode="remote"  # or "local" based on configuration
+                execution_mode="remote"
             )
             
-            # Release GPU allocation after generating config
             context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
             
             if not success:
                 error_msg = "Failed to generate moqui_tps.in file"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Verify the file was created
-            tps_file = context.case_path / "moqui_tps.in"
+            tps_file = context.path / "moqui_tps.in"
             if not tps_file.exists():
                 error_msg = "Generated moqui_tps.in file not found"
                 context.logger.error(error_msg, {
-                    "case_id": context.case_id,
+                    "beam_id": context.id,
                     "expected_file": str(tps_file)
                 })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Record workflow step
-            context.case_repo.record_workflow_step(
-                case_id=context.case_id,
-                step=WorkflowStep.TPS_GENERATION,
-                status="completed",
-                error_message="TPS configuration file generated successfully"
-            )
+            # Record workflow step for the parent case
+            beam = context.case_repo.get_beam(context.id)
+            if beam:
+                context.case_repo.record_workflow_step(
+                    case_id=beam.parent_case_id,
+                    step=WorkflowStep.TPS_GENERATION,
+                    status="completed",
+                    metadata={"beam_id": context.id, "message": "TPS configuration file generated successfully"}
+                )
             
-            context.logger.info("Initial validation and TPS generation completed successfully", {
-                "case_id": context.case_id,
+            context.logger.info("Initial validation and TPS generation completed successfully for beam", {
+                "beam_id": context.id,
                 "tps_file": str(tps_file)
             })
             
             return PreprocessingState()
             
         except Exception as e:
-            # Make sure to release GPU on any error
             if 'gpu_allocation' in locals() and gpu_allocation:
                 context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
                 
-            error_msg = f"Initial state error: {str(e)}"
+            error_msg = f"Initial state error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
 
     def get_state_name(self) -> str:
@@ -144,125 +142,71 @@ class InitialState(WorkflowState):
 
 class PreprocessingState(WorkflowState):
     """
-    Preprocessing state - runs mqi_interpreter locally (P2 process).
-    FROM: Preprocessing state from original states.py.
+    Preprocessing state - runs mqi_interpreter locally for a single beam.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Execute local preprocessing using mqi_interpreter for each beam subdirectory.
-        FROM: Refactored preprocessing logic to process individual beam directories.
+        Execute local preprocessing using mqi_interpreter for the given beam.
         """
-        context.logger.info("Running mqi_interpreter preprocessing for beam subdirectories", {
-            "case_id": context.case_id
+        context.logger.info("Running mqi_interpreter preprocessing for beam", {
+            "beam_id": context.id
         })
         
         try:
-            # Step 1: Identify beam subdirectories
-            beam_paths = [d for d in context.case_path.iterdir() if d.is_dir()]
+            # The mqi_interpreter process reads from and writes to the beam directory.
+            beam_path = context.path
             
-            # Step 2: Pre-computation checks
-            if not beam_paths:
-                error_msg = "No beam subdirectories found in case directory"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "case_path": str(context.case_path)
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                return FailedState()
-            
-            context.logger.info(f"Found {len(beam_paths)} beam subdirectories to process", {
-                "case_id": context.case_id,
-                "beam_count": len(beam_paths),
-                "beam_names": [beam.name for beam in beam_paths]
-            })
-            
-            # Get processing directory for CSV output (shared for entire case)
-            case_dirs = context.local_handler.settings.get_case_directories()
-            processing_dir = str(case_dirs['processing']).format(
-                case_id=context.case_id,
-                base_directory=context.local_handler.settings.get_base_directory()
-            )
-            processing_path = Path(processing_dir)
-            
-            # Ensure processing directory exists
-            processing_path.mkdir(parents=True, exist_ok=True)
-            
-            # The input file is located in the parent case directory
-            input_file = context.case_path / "moqui_tps.in"
+            # The input file 'moqui_tps.in' is expected to be in the beam directory.
+            input_file = beam_path / "moqui_tps.in"
             if not input_file.exists():
-                error_msg = f"moqui_tps.in file not found: {input_file}"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "input_file": str(input_file)
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                error_msg = f"moqui_tps.in file not found in beam directory: {input_file}"
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
+
+            # Execute mqi_interpreter. Output CSVs are generated in the beam_path.
+            result = context.local_handler.run_mqi_interpreter(
+                beam_directory=beam_path,
+                output_dir=beam_path  # Output CSVs to the beam's own directory
+            )
             
-            # Step 3: Iterate and execute for each beam directory
-            beams_processed = 0
-            for beam_path in beam_paths:
-                context.logger.info(f"Interpreting beam: {beam_path.name}", {
-                    "case_id": context.case_id,
-                    "beam_name": beam_path.name,
+            if not result.success:
+                error_msg = f"mqi_interpreter failed for beam '{context.id}'. Error: {result.error}"
+                context.logger.error(error_msg, {
+                    "beam_id": context.id,
+                    "command_output": result.output,
+                    "stderr": result.error
+                })
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
+                return FailedState()
+
+            # Verify that CSV files were generated in the beam directory
+            csv_files = list(beam_path.glob("*.csv"))
+            if not csv_files:
+                error_msg = "No CSV files generated after preprocessing beam"
+                context.logger.error(error_msg, {
+                    "beam_id": context.id,
                     "beam_path": str(beam_path)
                 })
-                
-                # Step 4: Execute mqi_interpreter with current beam_path
-                result = context.local_handler.run_mqi_interpreter(
-                    beam_directory=beam_path,  # Pass the individual beam directory
-                    output_dir=processing_path
-                )
-                
-                # Step 4: Robust error handling for individual beam
-                if not result.success:
-                    error_msg = f"mqi_interpreter failed for beam '{beam_path.name}'. Error: {result.error}"
-                    context.logger.error(error_msg, {
-                        "case_id": context.case_id,
-                        "beam_name": beam_path.name,
-                        "beam_path": str(beam_path),
-                        "command_output": result.output,
-                        "stderr": result.error
-                    })
-                    context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                    return FailedState()
-                
-                beams_processed += 1
-                context.logger.info(f"Successfully processed beam: {beam_path.name}", {
-                    "case_id": context.case_id,
-                    "beam_name": beam_path.name,
-                    "beams_processed": beams_processed,
-                    "total_beams": len(beam_paths)
-                })
-            
-            # Step 5: Verify collective success
-            csv_files = list(processing_path.glob("*.csv"))
-            if not csv_files:
-                error_msg = "No CSV files generated after processing all beams"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "processing_dir": str(processing_path),
-                    "beams_processed": beams_processed
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
                 
-            context.logger.info("Preprocessing completed successfully for all beams", {
-                "case_id": context.case_id,
-                "processing_dir": str(processing_path),
-                "csv_files_count": len(csv_files),
-                "beams_processed": beams_processed
+            context.logger.info("Preprocessing completed successfully for beam", {
+                "beam_id": context.id,
+                "beam_path": str(beam_path),
+                "csv_files_count": len(csv_files)
             })
             
             return FileUploadState()
             
         except Exception as e:
-            error_msg = f"Preprocessing error: {str(e)}"
+            error_msg = f"Preprocessing error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
 
     def get_state_name(self) -> str:
@@ -270,174 +214,79 @@ class PreprocessingState(WorkflowState):
 
 class FileUploadState(WorkflowState):
     """
-    File upload state - uploads files to HPC via SFTP with differentiated upload paths.
-    FROM: FileUploadState from original states.py.
-    REFACTORED: Now uploads TPS file and CSV files to separate directories per refactor_execute.md
+    File upload state - uploads beam-specific files to a dedicated directory on the HPC.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Upload case files to HPC cluster via SFTP with differentiated paths.
-        FROM: File upload logic from original workflow.
-        REFACTORED: Separated TPS and CSV file uploads to different remote directories.
+        Uploads moqui_tps.in and all *.csv files from the local beam directory to the HPC.
         """
-        context.logger.info("Uploading files to HPC cluster with differentiated paths", {
-            "case_id": context.case_id
-        })
-        
+        context.logger.info("Uploading beam files to HPC", {"beam_id": context.id})
+        context.case_repo.update_beam_status(context.id, BeamStatus.UPLOADING)
+
         try:
-            # Get HPC paths from configuration
+            beam = context.case_repo.get_beam(context.id)
+            if not beam:
+                error_msg = f"Could not retrieve beam data for beam_id: {context.id}"
+                context.logger.error(error_msg, {"beam_id": context.id})
+                # No need to update status again, just fail
+                return FailedState()
+
+            # Construct the remote path: /remote/path/{case_id}/{beam_id}/
             hpc_paths = context.local_handler.settings.get_hpc_paths()
-            if not hpc_paths:
-                error_msg = "HPC paths configuration not found"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            remote_base_dir = hpc_paths.get("remote_case_path_template") # e.g., /mnt/hpc/cases
+            if not remote_base_dir:
+                raise ProcessingError("`remote_case_path_template` not configured in settings.")
+
+            remote_beam_dir = f"{remote_base_dir}/{beam.parent_case_id}/{context.id}"
+            context.shared_context["remote_beam_dir"] = remote_beam_dir
+
+            # Find all files to upload from the local beam directory
+            local_beam_path = context.path
+            files_to_upload = list(local_beam_path.glob("*.csv"))
+            tps_file = local_beam_path / "moqui_tps.in"
+            
+            if not tps_file.exists():
+                error_msg = f"moqui_tps.in not found in local beam directory: {local_beam_path}"
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            tps_env_dir = hpc_paths.get('tps_env_dir')
-            output_csv_dir = hpc_paths.get('output_csv_dir')
-            
-            if not tps_env_dir or not output_csv_dir:
-                error_msg = "Required HPC paths (tps_env_dir, output_csv_dir) not configured"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                return FailedState()
-            
-            # Format the remote CSV directory path with case_id
-            remote_csv_path = output_csv_dir.format(case_id=context.case_id)
-            
-            # Step 1: Upload moqui_tps.in file to tps_env_dir
-            success = self._upload_tps_file(context, tps_env_dir)
-            if not success:
-                return FailedState()
-            
-            # Step 2: Upload CSV files to formatted remote CSV directory
-            success = self._upload_csv_files(context, remote_csv_path)
-            if not success:
-                return FailedState()
-            
-            # Store remote CSV path in context for HpcExecutionState
-            context.remote_csv_path = remote_csv_path
-            
-            context.logger.info("File upload completed successfully with differentiated paths", {
-                "case_id": context.case_id,
-                "tps_dir": tps_env_dir,
-                "csv_dir": remote_csv_path
+            files_to_upload.append(tps_file)
+
+            if not files_to_upload:
+                error_msg = "No files found in local beam directory to upload."
+                context.logger.warning(error_msg, {"beam_id": context.id})
+                # This might not be a failure, could be a beam with no data.
+                # For now, we proceed, but this could be a failure point.
+                return HpcExecutionState()
+
+            # Upload all files
+            for file_path in files_to_upload:
+                result = context.remote_handler.upload_file(
+                    local_file=file_path, remote_dir=remote_beam_dir
+                )
+                if not result.success:
+                    error_msg = f"Failed to upload file {file_path.name}: {result.error}"
+                    context.logger.error(error_msg, {"beam_id": context.id})
+                    context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
+                    return FailedState()
+
+            context.logger.info(f"Successfully uploaded {len(files_to_upload)} files for beam", {
+                "beam_id": context.id,
+                "remote_beam_dir": remote_beam_dir
             })
-            
+
             return HpcExecutionState()
-            
+
         except Exception as e:
-            error_msg = f"File upload error: {str(e)}"
+            error_msg = f"File upload error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
-
-    def _upload_tps_file(self, context: 'WorkflowManager', tps_env_dir: str) -> bool:
-        """
-        Upload moqui_tps.in file to the TPS environment directory.
-        
-        Args:
-            context: Workflow manager context
-            tps_env_dir: Remote TPS environment directory
-            
-        Returns:
-            True if upload successful, False otherwise
-        """
-        tps_file = context.case_path / "moqui_tps.in"
-        if not tps_file.exists():
-            error_msg = "moqui_tps.in file not found"
-            context.logger.error(error_msg, {
-                "case_id": context.case_id,
-                "tps_file": str(tps_file)
-            })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-            return False
-        
-        result = context.remote_handler.upload_file(
-            local_file=tps_file,
-            remote_dir=tps_env_dir
-        )
-        
-        if not result.success:
-            error_msg = f"Failed to upload moqui_tps.in to {tps_env_dir}: {result.error}"
-            context.logger.error(error_msg, {
-                "case_id": context.case_id,
-                "file_name": "moqui_tps.in",
-                "tps_env_dir": tps_env_dir
-            })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-            return False
-            
-        context.logger.info("Successfully uploaded moqui_tps.in", {
-            "case_id": context.case_id,
-            "tps_env_dir": tps_env_dir
-        })
-        return True
-
-    def _upload_csv_files(self, context: 'WorkflowManager', remote_csv_path: str) -> bool:
-        """
-        Upload all CSV files to the remote CSV directory.
-        
-        Args:
-            context: Workflow manager context
-            remote_csv_path: Remote directory path for CSV files
-            
-        Returns:
-            True if upload successful, False otherwise
-        """
-        # Get processing directory path for CSV files
-        case_dirs = context.local_handler.settings.get_case_directories()
-        processing_dir = str(case_dirs['processing']).format(
-            case_id=context.case_id,
-            base_directory=context.local_handler.settings.get_base_directory()
-        )
-        processing_path = Path(processing_dir)
-        
-        if not processing_path.exists() or not processing_path.is_dir():
-            error_msg = "CSV processing directory not found"
-            context.logger.error(error_msg, {
-                "case_id": context.case_id,
-                "processing_dir": str(processing_path)
-            })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-            return False
-        
-        csv_files = list(processing_path.glob("*.csv"))
-        if not csv_files:
-            error_msg = "No CSV files found in processing directory"
-            context.logger.error(error_msg, {
-                "case_id": context.case_id,
-                "processing_dir": str(processing_path)
-            })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-            return False
-        
-        # Upload each CSV file to the remote CSV directory
-        for csv_file in csv_files:
-            result = context.remote_handler.upload_file(
-                local_file=csv_file,
-                remote_dir=remote_csv_path
-            )
-            if not result.success:
-                error_msg = f"Failed to upload CSV file {csv_file.name}: {result.error}"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "csv_file": str(csv_file),
-                    "remote_csv_path": remote_csv_path
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
-                return False
-                
-        context.logger.info(f"Successfully uploaded {len(csv_files)} CSV files", {
-            "case_id": context.case_id,
-            "csv_files_count": len(csv_files),
-            "remote_csv_path": remote_csv_path
-        })
-        return True
 
     def get_state_name(self) -> str:
         return "File Upload"
@@ -445,96 +294,88 @@ class FileUploadState(WorkflowState):
 
 class HpcExecutionState(WorkflowState):
     """
-    HPC execution state - runs MOQUI simulation on HPC via SSH.
-    FROM: HpcExecutionState from original states.py.
+    HPC execution state - runs MOQUI simulation on HPC for a single beam.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Execute MOQUI simulation on HPC and poll for completion.
-        FROM: HPC execution logic from original workflow.
+        Submits a MOQUI simulation job for the beam and polls for completion.
         """
-        context.logger.info("Starting HPC simulation execution", {
-            "case_id": context.case_id
-        })
-        
-        # Update status to processing
-        context.case_repo.update_case_status(context.case_id, CaseStatus.PROCESSING)
+        context.logger.info("Starting HPC simulation for beam", {"beam_id": context.id})
         
         try:
             # Allocate GPU for the job
-            gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.case_id)
+            gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.id)
             if not gpu_allocation:
                 error_msg = "No GPU available for simulation"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
             context.logger.info("GPU allocated for simulation", {
-                "case_id": context.case_id,
-                "gpu_uuid": gpu_allocation.gpu_uuid
+                "beam_id": context.id,
+                "gpu_uuid": gpu_allocation.get('gpu_uuid')
             })
             
-            # Submit simulation job to HPC with dynamic CSV path
-            remote_case_dir = f"/tmp/mqi_cases/{context.case_id}"
-            remote_csv_path = getattr(context, 'remote_csv_path', f"{remote_case_dir}/csv_data")
-            
+            remote_beam_dir = context.shared_context.get("remote_beam_dir")
+            if not remote_beam_dir:
+                raise ProcessingError("Remote beam directory not found in shared context.")
+
+            # Submit simulation job to HPC for the specific beam
             job_result = context.remote_handler.submit_simulation_job(
-                case_id=context.case_id,
-                remote_case_dir=remote_case_dir,
-                remote_csv_dir=remote_csv_path,
-                gpu_uuid=gpu_allocation.gpu_uuid
+                beam_id=context.id,
+                remote_beam_dir=remote_beam_dir,
+                gpu_uuid=gpu_allocation.get('gpu_uuid')
             )
             
             if not job_result.success:
                 error_msg = f"Failed to submit HPC job: {job_result.error}"
-                context.logger.error(error_msg, {"case_id": context.case_id})
-                context.gpu_repo.release_gpu(gpu_allocation.gpu_uuid)
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.gpu_repo.release_gpu(gpu_allocation.get('gpu_uuid'))
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Poll for job completion
             job_id = job_result.job_id
+            context.case_repo.assign_hpc_job_id_to_beam(context.id, job_id)
+            context.case_repo.update_beam_status(context.id, BeamStatus.HPC_QUEUED)
+
             context.logger.info("HPC job submitted, polling for completion", {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "job_id": job_id
             })
             
+            # This is a long-running wait. We can update status to RUNNING once polling starts.
+            context.case_repo.update_beam_status(context.id, BeamStatus.HPC_RUNNING)
             job_status = context.remote_handler.wait_for_job_completion(
                 job_id=job_id,
                 timeout_seconds=3600  # 1 hour timeout
             )
             
-            # Release GPU after job completion
-            context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
+            context.gpu_repo.release_gpu(gpu_allocation.get('gpu_uuid'))
             
             if job_status.failed:
-                error_msg = f"HPC job failed: {job_status.error}"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "job_id": job_id
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                error_msg = f"HPC job failed: {job_status.error_message}"
+                context.logger.error(error_msg, {"beam_id": context.id, "job_id": job_id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            context.logger.info("HPC simulation completed successfully", {
-                "case_id": context.case_id,
+            context.logger.info("HPC simulation completed successfully for beam", {
+                "beam_id": context.id,
                 "job_id": job_id
             })
             
             return DownloadState()
             
         except Exception as e:
-            # Make sure to release GPU on any error
             if 'gpu_allocation' in locals() and gpu_allocation:
-                context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
+                context.gpu_repo.release_gpu(gpu_allocation.get('gpu_uuid'))
                 
-            error_msg = f"HPC execution error: {str(e)}"
+            error_msg = f"HPC execution error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
 
     def get_state_name(self) -> str:
@@ -543,79 +384,72 @@ class HpcExecutionState(WorkflowState):
 
 class DownloadState(WorkflowState):
     """
-    Download state - downloads result files from HPC via SFTP.
-    FROM: DownloadState from original states.py.
+    Download state - downloads the raw result file from the HPC for a single beam.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Download result files from HPC cluster.
-        FROM: File download logic from original workflow.
+        Downloads the 'output.raw' file from the remote beam directory to a local results directory.
         """
-        context.logger.info("Downloading results from HPC cluster", {
-            "case_id": context.case_id
-        })
-        
+        context.logger.info("Downloading results from HPC for beam", {"beam_id": context.id})
+        context.case_repo.update_beam_status(context.id, BeamStatus.DOWNLOADING)
+
         try:
-            remote_case_dir = f"/tmp/mqi_cases/{context.case_id}"
+            beam = context.case_repo.get_beam(context.id)
+            if not beam:
+                raise ProcessingError(f"Could not retrieve beam data for beam_id: {context.id}")
+
+            remote_beam_dir = context.shared_context.get("remote_beam_dir")
+            if not remote_beam_dir:
+                raise ProcessingError("Remote beam directory not found in shared context.")
+
+            # Define local download path based on config
+            case_dirs = context.local_handler.settings.get_case_directories()
+            # Using final_dicom_directory as the base for results, as per interpretation of refactor doc
+            local_result_dir_template = case_dirs.get("final_dicom")
+            if not local_result_dir_template:
+                 raise ProcessingError("`final_dicom_directory` not configured in settings.")
             
-            # Download result files
-            result_files = [
-                "output.raw",
-                "simulation.log",
-                "metadata.json"
-            ]
+            local_result_dir = Path(str(local_result_dir_template).format(case_id=beam.parent_case_id))
+            local_beam_result_dir = local_result_dir / beam.beam_id
+            local_beam_result_dir.mkdir(parents=True, exist_ok=True)
             
-            for file_name in result_files:
-                result = context.remote_handler.download_file(
-                    remote_file_path=f"{remote_case_dir}/{file_name}",
-                    local_dir=context.case_path
-                )
-                
-                if not result.success:
-                    # Log warning but don't fail - some files might be optional
-                    context.logger.warning(f"Failed to download {file_name}", {
-                        "case_id": context.case_id,
-                        "file_name": file_name,
-                        "error": result.error
-                    })
-            
-            # Verify that at least the main output file was downloaded
-            main_output = context.case_path / "output.raw"
-            if not main_output.exists():
-                error_msg = "Main output file was not downloaded"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "expected_file": str(main_output)
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            # Download the main output file
+            remote_file_path = f"{remote_beam_dir}/output.raw"
+            result = context.remote_handler.download_file(
+                remote_file_path=remote_file_path,
+                local_dir=local_beam_result_dir
+            )
+
+            if not result.success:
+                error_msg = f"Failed to download output.raw: {result.error}"
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
+                return FailedState()
+
+            main_output_file = local_beam_result_dir / "output.raw"
+            if not main_output_file.exists():
+                error_msg = "Main output file 'output.raw' was not downloaded."
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Clean up remote directories
-            context.remote_handler.cleanup_remote_directory(remote_case_dir)
+            # Store the path for postprocessing
+            context.shared_context["raw_output_file"] = main_output_file
+
+            # Clean up remote directory
+            context.remote_handler.cleanup_remote_directory(remote_beam_dir)
             
-            # Clean up remote CSV directory if it exists in context
-            remote_csv_path = getattr(context, 'remote_csv_path', None)
-            if remote_csv_path:
-                context.logger.info("Cleaning up remote CSV directory", {
-                    "case_id": context.case_id,
-                    "remote_csv_path": remote_csv_path
-                })
-                context.remote_handler.cleanup_remote_directory(remote_csv_path)
-            
-            context.logger.info("Results downloaded successfully and remote cleanup completed", {
-                "case_id": context.case_id
-            })
-            
+            context.logger.info("Beam result downloaded successfully", {"beam_id": context.id})
             return PostprocessingState()
-            
+
         except Exception as e:
-            error_msg = f"Download error: {str(e)}"
+            error_msg = f"Download error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
 
     def get_state_name(self) -> str:
@@ -623,106 +457,65 @@ class DownloadState(WorkflowState):
 
 class PostprocessingState(WorkflowState):
     """
-    Postprocessing state - runs RawToDCM locally (P3 process).
-    FROM: PostprocessingState from original states.py.
+    Postprocessing state - runs RawToDCM locally for a single beam's output.
     """
 
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """
-        Execute local postprocessing using RawToDCM.
-        FROM: Postprocessing logic from original workflow.
+        Execute local postprocessing using RawToDCM on the downloaded raw file.
         """
-        context.logger.info("Running RawToDCM postprocessing", {
-            "case_id": context.case_id
-        })
-        
-        # Update status to postprocessing
-        context.case_repo.update_case_status(context.case_id, CaseStatus.POSTPROCESSING)
-        
+        context.logger.info("Running RawToDCM postprocessing for beam", {"beam_id": context.id})
+        context.case_repo.update_beam_status(context.id, BeamStatus.POSTPROCESSING)
+
         try:
-            # Run RawToDCM on the simulation output
-            input_file = context.case_path / "output.raw"
-            output_dir = context.case_path / "dcm_output"
-            
-            # Ensure output directory exists
+            input_file = context.shared_context.get("raw_output_file")
+            if not input_file or not input_file.exists():
+                raise ProcessingError(f"Raw output file not found in shared context or does not exist: {input_file}")
+
+            # Output DICOMs to a 'dcm_output' subdirectory in the beam's result folder
+            output_dir = input_file.parent / "dcm_output"
             output_dir.mkdir(exist_ok=True)
-            
+
             result = context.local_handler.run_raw_to_dcm(
                 input_file=input_file,
                 output_dir=output_dir,
-                case_path=context.case_path
+                case_path=context.path # The original beam source path might be needed for context
             )
             
             if not result.success:
-                error_msg = f"RawToDCM failed: {result.error}"
+                error_msg = f"RawToDCM failed for beam {context.id}: {result.error}"
                 context.logger.error(error_msg, {
-                    "case_id": context.case_id,
+                    "beam_id": context.id,
                     "command_output": result.output
                 })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
             
-            # Verify output files were created
             dcm_files = list(output_dir.glob("*.dcm"))
             if not dcm_files:
-                error_msg = "No DCM files generated in postprocessing"
-                context.logger.error(error_msg, {
-                    "case_id": context.case_id,
-                    "output_dir": str(output_dir)
-                })
-                context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+                error_msg = "No DCM files generated in postprocessing for beam."
+                context.logger.error(error_msg, {"beam_id": context.id})
+                context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
                 return FailedState()
                 
-            context.logger.info("Postprocessing completed successfully", {
-                "case_id": context.case_id,
+            context.logger.info("Postprocessing completed successfully for beam", {
+                "beam_id": context.id,
                 "output_dir": str(output_dir),
                 "dcm_files_count": len(dcm_files)
             })
             
-            # Clean up temporary files
-            temp_files = [
-                "output.raw",
-                "simulation.log"
-            ]
-            
-            for temp_file in temp_files:
-                temp_path = context.case_path / temp_file
-                if temp_path.exists():
-                    temp_path.unlink()
-            
-            # Clean up CSV processing directory
-            case_dirs = context.local_handler.settings.get_case_directories()
-            processing_dir = str(case_dirs['processing']).format(
-                case_id=context.case_id,
-                base_directory=context.local_handler.settings.get_base_directory()
-            )
-            processing_path = Path(processing_dir)
-            if processing_path.exists() and processing_path.is_dir():
-                # Remove all CSV files in the processing directory
-                csv_files = list(processing_path.glob("*.csv"))
-                for csv_file in csv_files:
-                    csv_file.unlink()
-                # Remove the directory if it's empty
-                try:
-                    processing_path.rmdir()
-                except OSError:
-                    # Directory not empty, leave it
-                    pass
-                    
-            context.logger.debug("Temporary files and CSV processing directory cleaned up", {
-                "case_id": context.case_id,
-                "processing_dir": str(processing_path)
-            })
+            # Clean up the raw file
+            input_file.unlink()
             
             return CompletedState()
             
         except Exception as e:
-            error_msg = f"Postprocessing error: {str(e)}"
+            error_msg = f"Postprocessing error for beam: {str(e)}"
             context.logger.error(error_msg, {
-                "case_id": context.case_id,
+                "beam_id": context.id,
                 "exception_type": type(e).__name__
             })
-            context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+            context.case_repo.update_beam_status(context.id, BeamStatus.FAILED, error_message=error_msg)
             return FailedState()
 
     def get_state_name(self) -> str:
@@ -730,31 +523,33 @@ class PostprocessingState(WorkflowState):
 
 class CompletedState(WorkflowState):
     """
-    Final completed state.
-    FROM: Completion handling from original states.py.
+    Final completed state for a beam.
     """
 
     def execute(self, context: 'WorkflowManager') -> Optional[WorkflowState]:
         """
-        Handle completion tasks.
-        FROM: Completion logic from original workflow.
+        Handles completion tasks for the beam.
         """
-        context.logger.info("Workflow completed successfully", {
-            "case_id": context.case_id,
-            "case_path": str(context.case_path)
+        context.logger.info("Beam workflow completed successfully", {
+            "beam_id": context.id,
+            "beam_path": str(context.path)
         })
         
-        # Final status update
-        context.case_repo.update_case_status(context.case_id, CaseStatus.COMPLETED)
+        # Final status update for the beam
+        context.case_repo.update_beam_status(context.id, BeamStatus.COMPLETED)
         
-        # Record workflow completion
-        context.case_repo.record_workflow_step(
-            case_id=context.case_id,
-            step=WorkflowStep.COMPLETED,
-            status="completed",
-            error_message="Workflow successfully completed all states"
-        )
-        
+        # Record workflow completion for the parent case
+        beam = context.case_repo.get_beam(context.id)
+        if beam:
+            context.case_repo.record_workflow_step(
+                case_id=beam.parent_case_id,
+                step=WorkflowStep.COMPLETED,
+                status="completed",
+                metadata={"beam_id": context.id, "message": "Beam workflow successfully completed."}
+            )
+            # After beam is done, check if the parent case is now complete
+            update_case_status_from_beams(beam.parent_case_id, context.case_repo)
+
         return None  # Terminal state
 
     def get_state_name(self) -> str:
@@ -762,41 +557,44 @@ class CompletedState(WorkflowState):
 
 class FailedState(WorkflowState):
     """
-    Failed state for error handling.
-    FROM: Error handling from original states.py.
+    Failed state for beam error handling.
     """
 
     def execute(self, context: 'WorkflowManager') -> Optional[WorkflowState]:
         """
-        Handle failure cleanup.
-        FROM: Error handling logic from original workflow.
+        Handles failure cleanup for the beam.
         """
-        context.logger.error("Workflow entered failed state", {
-            "case_id": context.case_id
+        context.logger.error("Beam workflow entered failed state", {
+            "beam_id": context.id
         })
         
-        # Update case status to failed
-        context.case_repo.update_case_status(context.case_id, CaseStatus.FAILED)
+        # The status is likely already FAILED, but we ensure it here.
+        context.case_repo.update_beam_status(context.id, BeamStatus.FAILED)
         
-        # Release any allocated GPU resources
+        # Release any allocated GPU resources for this specific beam
         try:
-            context.gpu_repo.release_all_for_case(context.case_id)
-            context.logger.info("Released GPU resources for failed case", {
-                "case_id": context.case_id
+            # The 'assigned_case' in gpu_resources now holds the beam_id
+            context.gpu_repo.release_all_for_case(context.id)
+            context.logger.info("Released GPU resources for failed beam", {
+                "beam_id": context.id
             })
         except Exception as e:
-            context.logger.warning("Failed to release GPU resources during cleanup", {
-                "case_id": context.case_id,
+            context.logger.warning("Failed to release GPU resources during cleanup for beam", {
+                "beam_id": context.id,
                 "error": str(e)
             })
         
-        # Record failure in workflow steps
-        context.case_repo.record_workflow_step(
-            case_id=context.case_id,
-            step=WorkflowStep.FAILED,
-            status="failed",
-            error_message="Workflow terminated due to error"
-        )
+        # Record failure in workflow steps for the parent case
+        beam = context.case_repo.get_beam(context.id)
+        if beam:
+            context.case_repo.record_workflow_step(
+                case_id=beam.parent_case_id,
+                step=WorkflowStep.FAILED,
+                status="failed",
+                metadata={"beam_id": context.id, "message": "Beam workflow terminated due to error."}
+            )
+            # After beam has failed, check if the parent case should be marked as failed
+            update_case_status_from_beams(beam.parent_case_id, context.case_repo)
         
         return None  # Terminal state
 

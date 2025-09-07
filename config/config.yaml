@@ -35,8 +35,7 @@ paths:
   hpc:
     base_dir: "~/MOQUI_SMC"
     tps_env_dir: "~/MOQUI_SMC/tps_env"
-    output_csv_dir: "~/MOQUI_SMC/Output_csv/{case_id}"
-    dose_raw_dir: "~/MOQUI_SMC/Dose_raw/{case_id}"
+    remote_case_path_template: "~/MOQUI_SMC/cases" # New template for beam-specific paths
 
 # Paths to the external command-line tools P1 will orchestrate
 executables:

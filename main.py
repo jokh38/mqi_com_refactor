@@ -44,6 +44,7 @@ from src.infrastructure.gpu_monitor import GpuMonitor
 from src.handlers.remote_handler import RemoteHandler
 from src.utils.retry_policy import RetryPolicy
 from src.core.worker import worker_main
+from src.core.dispatcher import prepare_beam_jobs
 
 
 def scan_existing_cases(case_queue: mp.Queue, settings: Settings, logger: StructuredLogger) -> None:
@@ -353,39 +354,51 @@ class MQIApplication:
                     # Check for new cases
                     try:
                         case_data = self.case_queue.get(timeout=1.0)
-                        case_id = case_data['case_id']
-                        case_path = Path(case_data['case_path'])
-                        
-                        self.logger.info(f"Processing case: {case_id}")
-                        
-                        # Submit case to worker - pass the entire settings object
-                        future = executor.submit(
-                            worker_main,
-                            case_id,
-                            case_path, 
-                            self.settings
-                        )
-                        active_futures[future] = case_id
-                        
+                        case_id = case_data["case_id"]
+                        case_path = Path(case_data["case_path"])
+
+                        self.logger.info(f"Dispatching case: {case_id}")
+
+                        # Get the list of beam jobs to run
+                        beam_jobs = prepare_beam_jobs(case_id, case_path, self.settings)
+
+                        # Submit a worker for each beam
+                        for job in beam_jobs:
+                            beam_id = job["beam_id"]
+                            beam_path = job["beam_path"]
+                            self.logger.info(f"Submitting beam worker for: {beam_id}")
+                            future = executor.submit(
+                                worker_main,
+                                beam_id=beam_id,
+                                beam_path=beam_path,
+                                settings=self.settings
+                            )
+                            # The active_futures now tracks beams, not cases.
+                            active_futures[future] = beam_id
+
                     except:
                         pass  # Queue timeout, continue
-                    
+
                     # Check for completed workers
                     completed_futures = []
                     for future in as_completed(active_futures.keys(), timeout=0.1):
                         completed_futures.append(future)
-                    
+
                     for future in completed_futures:
-                        case_id = active_futures.pop(future)
+                        beam_id = active_futures.pop(future)
                         try:
                             # future.exception()을 통해 예외 발생 여부를 명시적으로 확인
                             if future.exception() is not None:
                                 # 예외가 있다면 future.result()를 호출하여 예외를 발생시키고 catch 블록에서 처리
                                 future.result()
                             else:
-                                self.logger.info(f"Case {case_id} completed successfully")
+                                self.logger.info(
+                                    f"Beam worker {beam_id} completed successfully"
+                                )
                         except Exception as e:
-                            self.logger.error(f"Case {case_id} failed", {"error": str(e)})
+                            self.logger.error(
+                                f"Beam worker {beam_id} failed", {"error": str(e)}
+                            )
                     
                 except KeyboardInterrupt:
                     self.logger.info("Received shutdown signal")

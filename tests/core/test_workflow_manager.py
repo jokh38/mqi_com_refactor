@@ -53,16 +53,17 @@ class TestWorkflowManager:
             remote_handler=remote_handler,
             tps_generator=tps_generator,
             logger=mock_logger,
-            case_id=case_id,
-            case_path=case_path,
+            id=case_id,
+            path=case_path,
         )
 
         manager.run_workflow()
 
         # Assert
-        case_repo.update_case_status.assert_called_once_with(
+        # The error handling in WorkflowManager now calls update_beam_status
+        from src.domain.enums import BeamStatus
+        case_repo.update_beam_status.assert_called_once_with(
             case_id,
-            CaseStatus.FAILED,
-            progress=25.0,
+            BeamStatus.FAILED,
             error_message=error_message
         )

@@ -138,6 +138,22 @@ class DatabaseConnection:
                 """
                 )
 
+                # Create beams table
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS beams (
+                        beam_id TEXT PRIMARY KEY,
+                        parent_case_id TEXT NOT NULL,
+                        beam_path TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        hpc_job_id TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (parent_case_id) REFERENCES cases (case_id)
+                    )
+                    """
+                )
+
                 # Create gpu_resources table
                 conn.execute(
                     """
@@ -190,6 +206,10 @@ class DatabaseConnection:
                 conn.execute(
                     "CREATE INDEX IF NOT EXISTS idx_workflow_case ON "
                     "workflow_steps (case_id)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_beams_parent_case ON "
+                    "beams (parent_case_id)"
                 )
 
             self.logger.info("Database schema initialized successfully")
