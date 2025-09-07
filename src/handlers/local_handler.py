@@ -142,168 +142,113 @@ class LocalHandler:
         except Exception as e:
             raise ProcessingError(f"Failed to build command from template '{template_name}': {e}")
 
-    def execute_mqi_interpreter(
+    def _execute_command_with_retry(
         self,
         case_id: str,
         case_path: Path,
-        command: list[str],  # additional_args 대신 완성된 command 리스트를 받음
+        command: list[str],
+        operation_name: str,
+        log_message: str,
     ) -> ExecutionResult:
         """
-        미리 생성된 명령어를 사용하여 mqi_interpreter를 실행합니다.
-
-        FROM: Migrated from `execute_mqi_interpreter` method in original `local_handler.py`.
-        REFACTORING NOTES: Uses injected RetryPolicy instead of hardcoded retry logic.
-                          Now accepts pre-built command instead of building it internally.
+        A generic helper to execute a local command with a retry policy.
 
         Args:
-            case_id: Case identifier for logging
-            case_path: Path to the case directory
-            command: Pre-built command list to execute
+            case_id: Case identifier for logging.
+            case_path: Path to the case directory (CWD for the command).
+            command: The command to execute as a list of strings.
+            operation_name: A unique name for the operation (for retry policy).
+            log_message: The message to log for this operation.
 
         Returns:
-            ExecutionResult containing execution details
+            ExecutionResult containing the outcome of the execution.
         """
         self.logger.info(
-            "Executing MQI interpreter",
+            log_message,
             {"case_id": case_id, "command": " ".join(command)},
         )
 
-        # 내부에서 명령어를 조립하는 로직은 모두 제거됨
-
-        # Execute with retry policy
-        def execute_attempt():
+        def execute_attempt() -> ExecutionResult:
             try:
                 result = self.command_executor.execute_command(
                     command=command,
                     cwd=case_path,
                     timeout=self.settings.processing.case_timeout,
                 )
-
                 return ExecutionResult(
                     success=True,
                     output=result.stdout,
                     error=result.stderr,
                     return_code=result.returncode,
                 )
-
             except ProcessingError as e:
-                log_msg = "MQI interpreter execution failed"
                 log_ctx = {
                     "case_id": case_id,
                     "command": " ".join(command),
                     "error": str(e),
                 }
-                self.logger.error(log_msg, log_ctx)
-
-                # Extract return code from error if available
+                self.logger.error(f"{operation_name} execution failed", log_ctx)
                 return_code = getattr(e, "return_code", -1)
-
                 return ExecutionResult(
                     success=False, output="", error=str(e), return_code=return_code
                 )
 
-        # Apply retry policy
         result = self.retry_policy.execute(
             execute_attempt,
-            operation_name="mqi_interpreter",
+            operation_name=operation_name,
             context={"case_id": case_id},
         )
 
         if result.success:
             self.logger.info(
-                "MQI interpreter completed successfully",
+                f"{operation_name} completed successfully",
                 {"case_id": case_id, "output_length": len(result.output)},
             )
         else:
             self.logger.error(
-                "MQI interpreter failed after retries",
+                f"{operation_name} failed after retries",
                 {
                     "case_id": case_id,
                     "return_code": result.return_code,
                     "error": result.error,
                 },
-            )  # noqa: E501
+            )
 
         return result
+
+    def execute_mqi_interpreter(
+        self,
+        case_id: str,
+        case_path: Path,
+        command: list[str],
+    ) -> ExecutionResult:
+        """
+        Executes the mqi_interpreter using a generalized command runner.
+        """
+        return self._execute_command_with_retry(
+            case_id=case_id,
+            case_path=case_path,
+            command=command,
+            operation_name="mqi_interpreter",
+            log_message="Executing MQI interpreter",
+        )
 
     def execute_raw_to_dicom(
         self,
         case_id: str,
         case_path: Path,
-        command: list[str],  # Now accepts pre-built command instead of building it internally
+        command: list[str],
     ) -> ExecutionResult:
         """
-        미리 생성된 명령어를 사용하여 RawToDCM converter를 실행합니다.
-
-        FROM: Migrated from `execute_raw_to_dicom` method in original `local_handler.py`.
-        REFACTORING NOTES: Uses injected dependencies and now accepts pre-built command 
-                          instead of building it internally, following the same pattern as execute_mqi_interpreter.
-
-        Args:
-            case_id: Case identifier for logging
-            case_path: Path to the case directory
-            command: Pre-built command list to execute
-
-        Returns:
-            ExecutionResult containing execution details
+        Executes the RawToDCM converter using a generalized command runner.
         """
-        self.logger.info(
-            "Executing Raw to DICOM converter",
-            {"case_id": case_id, "command": " ".join(command)},
+        return self._execute_command_with_retry(
+            case_id=case_id,
+            case_path=case_path,
+            command=command,
+            operation_name="raw_to_dicom",
+            log_message="Executing Raw to DICOM converter",
         )
-
-        # Execute with retry policy
-        def execute_attempt():
-            try:
-                result = self.command_executor.execute_command(
-                    command=command,
-                    cwd=case_path,
-                    timeout=self.settings.processing.case_timeout,
-                )
-
-                return ExecutionResult(
-                    success=True,
-                    output=result.stdout,
-                    error=result.stderr,
-                    return_code=result.returncode,
-                )
-
-            except ProcessingError as e:
-                log_msg = "Raw to DICOM conversion failed"
-                log_ctx = {
-                    "case_id": case_id,
-                    "command": " ".join(command),
-                    "error": str(e),
-                }
-                self.logger.error(log_msg, log_ctx)
-
-                return_code = getattr(e, "return_code", -1)
-
-                return ExecutionResult(
-                    success=False, output="", error=str(e), return_code=return_code
-                )
-
-        # Apply retry policy
-        result = self.retry_policy.execute(
-            execute_attempt, operation_name="raw_to_dicom", context={"case_id": case_id}
-        )
-
-        if result.success:
-            self.logger.info(
-                "Raw to DICOM conversion completed successfully",
-                {"case_id": case_id, "output_length": len(result.output)},
-            )
-        else:
-            self.logger.error(
-                "Raw to DICOM conversion failed after retries",
-                {
-                    "case_id": case_id,
-                    "return_code": result.return_code,
-                    "error": result.error,
-                },
-            )  # noqa: E501
-
-        return result
 
     def validate_case_structure(self, case_path: Path) -> bool:
         """
