@@ -2,7 +2,7 @@
 
 dashboard:
   auto_start: true  # Set to false to disable automatic dashboard launch
-  refresh_interval_seconds: 1 # How often (in seconds) the dashboard refreshes.
+  refresh_interval_seconds: 2 # How often (in seconds) the dashboard refreshes.
 
 
 # Settings for the main application controller
@@ -60,8 +60,8 @@ hpc_connection:
   host: "10.243.62.128"
   user: "jokh38"
   # Using SSH keys is strongly recommended over passwords for security.
-  ssh_key_path: "C:/Users/breezing/.ssh/id_rsa"
-  # ssh_key_path: "C:/Users/com/.ssh/id_rsa"
+  ssh_key_path: "C:\\Users\\breezing\\.ssh\\id_rsa"
+  # ssh_key_path: "C:\\Users\\com\\.ssh\\id_rsa"
 
   # SSH connection timeout in seconds
   connection_timeout_seconds: 10
@@ -114,38 +114,48 @@ tps_generator:
     outputs_dir: "/home/gpuadmin/Dose_raw"
 
 # Parameters for generating moqui_tps.in file generation
-# as per mqi_param_gen.md
 moqui_tps_parameters:
   GPUID: 0  # Will be dynamically set from pueue_group
   RandomSeed: -1932780356
   UseAbsolutePath: true
+  TotalThreads: -1
+  MaxHistoriesPerBatch: 10000
   Verbosity: 0
+
+  ParentDir: ""  # Will be dynamically set
+  DicomDir: ""  # Will be dynamically set
+  logFilePath: ""  # Will be dynamically set
+
+  GantryNum: 0  # Will be dynamically set
+
   UsingPhantomGeo: true
+  TwoCentimeterMode: true
+
+  # Phantom Dim: Pixel count of XYZ
   PhantomDimX: 400
   PhantomDimY: 400
   PhantomDimZ: 400
+  # Phantom Unit: mm
   PhantomUnitX: 1
   PhantomUnitY: 1
   PhantomUnitZ: 1
+  # Phantom Position: Basic position is phantom center (-200, -200, -200)
+  # Y is the depth position in DICOM
   PhantomPositionX: -200.0
   PhantomPositionY: -200.0
   PhantomPositionZ: -380.0
-  Scorer: Dose
+  Scorer: Dose  # Dose is dose to water. We support dose to medium, dose to water, track-weighted LET, dose-weighted LET.
   SupressStd: true
   ReadStructure: true
   ROIName: External
-  DicomDir: ""  # Will be dynamically set
-  logFilePath: ""  # Will be dynamically set
   SourceType: FluenceMap
   SimulationType: perBeam
+  BeamNumbers: 1  # Will be dynamically set
+  ParticlesPerHistory: 1 # Scale factor to select the number of primary particles
+
   ScoreToCTGrid: true
+
+  OutputDir: ""  # Will be dynamically set
   OutputFormat: raw
   OverwriteResults: true
-  TotalThreads: -1
-  MaxHistoriesPerBatch: 10000
-  BeamNumbers: 1  # Will be dynamically set
-  ParticlesPerHistory: 1
-  TwoCentimeterMode: true
-  ParentDir: ""  # Will be dynamically set
-  OutputDir: ""  # Will be dynamically set
-  GantryNum: 0  # Will be dynamically set
+
