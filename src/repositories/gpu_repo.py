@@ -1,3 +1,7 @@
+"""!
+@file gpu_repo.py
+@brief Manages all CRUD operations for the 'gpu_resources' table.
+"""
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
@@ -10,36 +14,27 @@ from src.repositories.base import BaseRepository
 
 
 class GpuRepository(BaseRepository):
-    """
-    Manages CRUD operations for the 'gpu_resources' table and handles GPU
-    allocation/deallocation.
-
-    FROM: Extracts all GPU-related database methods from `database_handler.py`.
-    REFACTORING NOTES: Separates GPU data persistence from nvidia-smi parsing.
+    """!
+    @brief Manages CRUD operations for the 'gpu_resources' table and handles GPU
+           allocation/deallocation.
+    @details This class separates GPU data persistence from nvidia-smi parsing.
     """
 
     def __init__(self, db_connection: DatabaseConnection, logger: StructuredLogger):
-        """
-        Initializes the GPU repository with injected database connection.
-
-        Args:
-            db_connection: Database connection manager
-            logger: Logger for recording operations
+        """!
+        @brief Initializes the GPU repository with an injected database connection.
+        @param db_connection: The database connection manager.
+        @param logger: The logger for recording operations.
         """
         super().__init__(db_connection, logger)
 
     def update_resources(self, gpu_data: List[Dict[str, Any]]) -> None:
-        """
-        Updates GPU resources table with data from GPU monitor using an
-        atomic UPSERT operation.
-
-        FROM: The database update logic from `populate_gpu_resources_from_nvidia_smi`
-              in original `database_handler.py`.
-        REFACTORING NOTES: Now receives clean, parsed data. Uses a single
-                           transactional `UPSERT` for efficiency and atomicity.
-
-        Args:
-            gpu_data: List of dictionaries containing GPU information
+        """!
+        @brief Updates the GPU resources table with data from the GPU monitor using an
+               atomic UPSERT operation.
+        @details This method uses a single transactional UPSERT for efficiency and atomicity.
+        @param gpu_data: A list of dictionaries containing GPU information.
+        @raises GpuResourceError: If the update fails.
         """
         self._log_operation("update_resources", count=len(gpu_data))
 
@@ -84,14 +79,10 @@ class GpuRepository(BaseRepository):
             raise GpuResourceError(f"Failed to update GPU resources: {e}")
 
     def assign_gpu_to_case(self, gpu_uuid: str, case_id: str) -> None:
-        """
-        Assigns a GPU to a specific case.
-
-        FROM: GPU assignment logic from original `database_handler.py`.
-
-        Args:
-            gpu_uuid: UUID of the GPU to assign
-            case_id: Case identifier to assign GPU to
+        """!
+        @brief Assigns a GPU to a specific case.
+        @param gpu_uuid: The UUID of the GPU to assign.
+        @param case_id: The case identifier to assign the GPU to.
         """
         self._log_operation("assign_gpu_to_case", gpu_uuid, case_id=case_id)
 
@@ -108,13 +99,9 @@ class GpuRepository(BaseRepository):
         )
 
     def release_gpu(self, gpu_uuid: str) -> None:
-        """
-        Releases a GPU, making it available again.
-
-        FROM: GPU release logic from original `database_handler.py`.
-
-        Args:
-            gpu_uuid: UUID of the GPU to release
+        """!
+        @brief Releases a GPU, making it available again.
+        @param gpu_uuid: The UUID of the GPU to release.
         """
         self._log_operation("release_gpu", gpu_uuid)
 
@@ -131,18 +118,12 @@ class GpuRepository(BaseRepository):
     def find_and_lock_available_gpu(
         self, case_id: str, min_memory_mb: int = 1000
     ) -> Optional[Dict[str, str]]:
-        """
-        Atomically finds an idle GPU with sufficient memory and assigns it to a case.
-
-        FROM: The atomic GPU allocation logic from original `database_handler.py`.
-        REFACTORING NOTES: Maintains the same atomic transaction behavior.
-
-        Args:
-            case_id: Case identifier requesting GPU
-            min_memory_mb: Minimum required memory in MB
-
-        Returns:
-            Dictionary with gpu_uuid if successful, None otherwise
+        """!
+        @brief Atomically finds an idle GPU with sufficient memory and assigns it to a case.
+        @param case_id: The case identifier requesting the GPU.
+        @param min_memory_mb: The minimum required memory in MB.
+        @return A dictionary with the gpu_uuid if successful, None otherwise.
+        @raises GpuResourceError: If the allocation fails.
         """
         self._log_operation(
             "find_and_lock_available_gpu", case_id, min_memory_mb=min_memory_mb
@@ -212,13 +193,9 @@ class GpuRepository(BaseRepository):
             raise GpuResourceError(f"Failed to allocate GPU for case {case_id}: {e}")
 
     def get_all_gpu_resources(self) -> List[GpuResource]:
-        """
-        Retrieves detailed information for all tracked GPU resources.
-
-        FROM: GPU resource retrieval from original `database_handler.py`.
-
-        Returns:
-            List of GpuResource objects
+        """!
+        @brief Retrieves detailed information for all tracked GPU resources.
+        @return A list of GpuResource objects.
         """
         self._log_operation("get_all_gpu_resources")
 
@@ -255,14 +232,10 @@ class GpuRepository(BaseRepository):
         return gpus
 
     def get_gpu_by_uuid(self, uuid: str) -> Optional[GpuResource]:
-        """
-        Get specific GPU resource by UUID.
-
-        Args:
-            uuid: GPU UUID to retrieve
-
-        Returns:
-            GpuResource object if found, None otherwise
+        """!
+        @brief Get a specific GPU resource by its UUID.
+        @param uuid: The GPU UUID to retrieve.
+        @return A GpuResource object if found, None otherwise.
         """
         self._log_operation("get_gpu_by_uuid", uuid)
 
@@ -296,11 +269,9 @@ class GpuRepository(BaseRepository):
         return None
 
     def get_available_gpu_count(self) -> int:
-        """
-        Get count of available (idle) GPUs.
-
-        Returns:
-            Number of idle GPUs
+        """!
+        @brief Get the count of available (idle) GPUs.
+        @return The number of idle GPUs.
         """
         self._log_operation("get_available_gpu_count")
 
@@ -310,14 +281,10 @@ class GpuRepository(BaseRepository):
         return row["count"] if row else 0
 
     def release_all_for_case(self, case_id: str) -> int:
-        """
-        Release all GPUs allocated to a specific case.
-
-        Args:
-            case_id: Case identifier
-
-        Returns:
-            Number of GPUs released
+        """!
+        @brief Release all GPUs allocated to a specific case.
+        @param case_id: The case identifier.
+        @return The number of GPUs released.
         """
         self._log_operation("release_all_for_case", case_id=case_id)
         

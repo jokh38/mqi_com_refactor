@@ -1,22 +1,23 @@
 # =====================================================================================
 # Target File: src/core/case_aggregator.py
 # =====================================================================================
+"""!
+@file case_aggregator.py
+@brief Contains logic for aggregating beam statuses to update case status.
+"""
 
 from src.repositories.case_repo import CaseRepository
 from src.domain.enums import CaseStatus, BeamStatus
 
 def update_case_status_from_beams(case_id: str, case_repo: CaseRepository):
-    """
-    Checks the status of all beams for a given case and updates the parent case's
-    status accordingly.
-
+    """!
+    @brief Checks the status of all beams for a given case and updates the parent case's status.
+    @details
     - If all beams are COMPLETED, the case is COMPLETED.
     - If any beam is FAILED, the case is FAILED.
     - Otherwise, the case remains PROCESSING.
-
-    Args:
-        case_id: The ID of the parent case to check.
-        case_repo: An instance of the CaseRepository for database access.
+    @param case_id: The ID of the parent case to check.
+    @param case_repo: An instance of the CaseRepository for database access.
     """
     beams = case_repo.get_beams_for_case(case_id)
 

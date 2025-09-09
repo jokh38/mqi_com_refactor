@@ -2,6 +2,10 @@
 # Target File: src/core/tps_generator.py
 # Source Reference: Legacy TPS Generator service
 # =====================================================================================
+"""!
+@file tps_generator.py
+@brief Contains the TpsGenerator service for creating moqui_tps.in files.
+"""
 
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -12,21 +16,18 @@ from src.infrastructure.logging_handler import StructuredLogger
 
 
 class TpsGenerator:
-    """
-    Service for generating dynamic moqui_tps.in configuration files for cases.
-    
-    This service replaces the static input.mqi dependency by generating case-specific
-    configuration files at runtime based on parameters from config.yaml and dynamic
-    case data such as GPU allocation and file paths.
+    """!
+    @brief Service for generating dynamic moqui_tps.in configuration files for cases.
+    @details This service replaces the static input.mqi dependency by generating case-specific
+             configuration files at runtime based on parameters from config.yaml and dynamic
+             case data such as GPU allocation and file paths.
     """
     
     def __init__(self, settings: Settings, logger: StructuredLogger):
-        """
-        Initialize TPS generator with configuration settings and logger.
-        
-        Args:
-            settings: Application settings containing moqui_tps_parameters
-            logger: Structured logger for error reporting and debugging
+        """!
+        @brief Initialize TPS generator with configuration settings and logger.
+        @param settings: Application settings containing moqui_tps_parameters.
+        @param logger: Structured logger for error reporting and debugging.
         """
         self.settings = settings
         self.logger = logger
@@ -39,17 +40,13 @@ class TpsGenerator:
         gpu_id: int,
         execution_mode: str = "local"
     ) -> bool:
-        """
-        Generate moqui_tps.in file for a specific case.
-        
-        Args:
-            case_path: Path to the case directory
-            case_id: Unique identifier for the case
-            gpu_id: GPU ID to be assigned for this case (0, 1, 2, etc.)
-            execution_mode: "local" or "remote" - determines path construction
-            
-        Returns:
-            True if file was generated successfully, False otherwise
+        """!
+        @brief Generate moqui_tps.in file for a specific case.
+        @param case_path: Path to the case directory.
+        @param case_id: Unique identifier for the case.
+        @param gpu_id: GPU ID to be assigned for this case (0, 1, 2, etc.).
+        @param execution_mode: "local" or "remote" - determines path construction.
+        @return True if file was generated successfully, False otherwise.
         """
         try:
             self.logger.info("Generating moqui_tps.in file", {
@@ -107,16 +104,12 @@ class TpsGenerator:
         case_id: str,
         execution_mode: str
     ) -> Dict[str, Any]:
-        """
-        Generate dynamic file paths based on execution mode.
-        
-        Args:
-            case_path: Path to the case directory  
-            case_id: Unique identifier for the case
-            execution_mode: "local" or "remote" execution mode
-            
-        Returns:
-            Dictionary containing dynamic path parameters
+        """!
+        @brief Generate dynamic file paths based on execution mode.
+        @param case_path: Path to the case directory.
+        @param case_id: Unique identifier for the case.
+        @param execution_mode: "local" or "remote" execution mode.
+        @return Dictionary containing dynamic path parameters.
         """
         paths = {}
         
@@ -146,15 +139,11 @@ class TpsGenerator:
         return paths
     
     def _extract_case_data(self, case_path: Path, case_id: str) -> Dict[str, Any]:
-        """
-        Extract case-specific data from DICOM files or other sources.
-        
-        Args:
-            case_path: Path to the case directory
-            case_id: Unique identifier for the case
-            
-        Returns:
-            Dictionary containing case-specific parameters
+        """!
+        @brief Extract case-specific data from DICOM files or other sources.
+        @param case_path: Path to the case directory.
+        @param case_id: Unique identifier for the case.
+        @return Dictionary containing case-specific parameters.
         """
         case_data = {}
         
@@ -181,17 +170,12 @@ class TpsGenerator:
         return case_data
     
     def _count_treatment_beams(self, case_path: Path) -> int:
-        """
-        Count the number of treatment beams from DICOM files or metadata.
-        
-        This is a simplified implementation that could be enhanced to parse
-        DICOM files properly using pydicom or similar libraries.
-        
-        Args:
-            case_path: Path to the case directory
-            
-        Returns:
-            Number of treatment beams (default to 1 if cannot determine)
+        """!
+        @brief Count the number of treatment beams from DICOM files or metadata.
+        @details This is a simplified implementation that could be enhanced to parse
+                 DICOM files properly using pydicom or similar libraries.
+        @param case_path: Path to the case directory.
+        @return Number of treatment beams (default to 1 if cannot determine).
         """
         try:
             # Look for DICOM files
@@ -216,15 +200,11 @@ class TpsGenerator:
             return 1
     
     def _validate_parameters(self, parameters: Dict[str, Any], case_id: str) -> bool:
-        """
-        Validate that all required parameters are present and valid.
-        
-        Args:
-            parameters: Dictionary of parameters to validate
-            case_id: Case ID for logging context
-            
-        Returns:
-            True if validation passes, False otherwise
+        """!
+        @brief Validate that all required parameters are present and valid.
+        @param parameters: Dictionary of parameters to validate.
+        @param case_id: Case ID for logging context.
+        @return True if validation passes, False otherwise.
         """
         try:
             # Get required parameters from config
@@ -268,16 +248,11 @@ class TpsGenerator:
             return False
     
     def _format_parameters_to_string(self, parameters: Dict[str, Any]) -> str:
-        """
-        Format parameters dictionary into the moqui_tps.in file format.
-        
-        The format is: key value\n for each parameter.
-        
-        Args:
-            parameters: Dictionary of parameters
-            
-        Returns:
-            Formatted string content for the file
+        """!
+        @brief Format parameters dictionary into the moqui_tps.in file format.
+        @details The format is: key value\n for each parameter.
+        @param parameters: Dictionary of parameters.
+        @return Formatted string content for the file.
         """
         lines = []
         

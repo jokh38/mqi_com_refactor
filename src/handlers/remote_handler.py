@@ -2,6 +2,10 @@
 # Target File: src/handlers/remote_handler.py
 # Source Reference: src/remote_handler.py
 # =====================================================================================
+"""!
+@file remote_handler.py
+@brief Manages HPC communication, remote execution, and file transfers.
+"""
 
 import os
 import time
@@ -18,14 +22,18 @@ from src.handlers.local_handler import ExecutionResult
 
 
 class UploadResult(NamedTuple):
-    """Result from file upload operation."""
+    """!
+    @brief Result from a file upload operation.
+    """
 
     success: bool
     error: Optional[str] = None
 
 
 class JobSubmissionResult(NamedTuple):
-    """Result from HPC job submission."""
+    """!
+    @brief Result from an HPC job submission.
+    """
 
     success: bool
     job_id: Optional[str] = None
@@ -33,7 +41,9 @@ class JobSubmissionResult(NamedTuple):
 
 
 class JobStatus(NamedTuple):
-    """Status of an HPC job."""
+    """!
+    @brief Status of an HPC job.
+    """
 
     job_id: str
     status: str
@@ -43,33 +53,29 @@ class JobStatus(NamedTuple):
 
 
 class DownloadResult(NamedTuple):
-    """Result from file download operation."""
+    """!
+    @brief Result from a file download operation.
+    """
 
     success: bool
     error: Optional[str] = None
 
 
 class RemoteHandler:
-    """
-    Manages HPC communication (SSH/SFTP), remote execution and file transfers.
-
-    FROM: Migrated from the original `RemoteHandler` class in `remote_handler.py`.
-    REFACTORING NOTES: Uses injected dependencies for retry policy and settings.
-                      Improved error handling and connection management.
+    """!
+    @brief Manages HPC communication (SSH/SFTP), remote execution and file transfers.
+    @details This class uses injected dependencies for retry policy and settings,
+             and provides improved error handling and connection management.
     """
 
     def __init__(
         self, settings: Settings, logger: StructuredLogger, retry_policy: RetryPolicy
     ):
-        """
-        Initialize RemoteHandler with injected dependencies.
-
-        FROM: Original `__init__` method with dependency injection improvements.
-
-        Args:
-            settings: Application settings containing HPC configuration
-            logger: Logger for recording operations
-            retry_policy: Retry policy for failed operations
+        """!
+        @brief Initialize RemoteHandler with injected dependencies.
+        @param settings: Application settings containing HPC configuration.
+        @param logger: Logger for recording operations.
+        @param retry_policy: Retry policy for failed operations.
         """
         self.settings = settings
         self.logger = logger
@@ -83,11 +89,9 @@ class RemoteHandler:
         self._connected = False
 
     def connect(self) -> None:
-        """
-        Establish SSH/SFTP connections to the remote HPC system.
-
-        FROM: Connection establishment logic from original remote_handler.py.
-        REFACTORING NOTES: Improved error handling and configuration usage.
+        """!
+        @brief Establish SSH/SFTP connections to the remote HPC system.
+        @raises ProcessingError: If HPC connection settings are not configured or connection fails.
         """
         self.logger.info(
             "Establishing HPC connection",
@@ -129,16 +133,16 @@ class RemoteHandler:
             raise ProcessingError(f"Failed to connect to HPC system: {e}")
 
     def disconnect(self) -> None:
-        """
-        Close SSH/SFTP connections.
-
-        FROM: Connection cleanup logic from original remote_handler.py.
+        """!
+        @brief Close SSH/SFTP connections.
         """
         self.logger.debug("Closing HPC connections")
         self._cleanup_connections()
 
     def _cleanup_connections(self) -> None:
-        """Clean up connection resources."""
+        """!
+        @brief Clean up connection resources.
+        """
         if self._sftp_client:
             try:
                 self._sftp_client.close()
@@ -156,26 +160,21 @@ class RemoteHandler:
         self._connected = False
 
     def _ensure_connected(self) -> None:
-        """Ensure connection is established before operations."""
+        """!
+        @brief Ensure a connection is established before performing operations.
+        """
         if not self._connected or not self._ssh_client:
             self.connect()
 
     def execute_remote_command(
         self, context_id: str, command: str, remote_cwd: Optional[str] = None
     ) -> ExecutionResult:
-        """
-        Execute a command on the remote HPC system.
-
-        FROM: Remote command execution from original remote_handler.py.
-        REFACTORING NOTES: Improved error handling and result processing.
-
-        Args:
-            context_id: An identifier for the operation for logging purposes (e.g., beam_id, 'gpu_monitoring').
-            command: Command to execute
-            remote_cwd: Remote working directory (optional)
-
-        Returns:
-            ExecutionResult containing execution details
+        """!
+        @brief Execute a command on the remote HPC system.
+        @param context_id: An identifier for the operation for logging purposes (e.g., beam_id, 'gpu_monitoring').
+        @param command: The command to execute.
+        @param remote_cwd: The remote working directory (optional).
+        @return An ExecutionResult containing the outcome of the execution.
         """
         self.logger.info(
             "Executing remote command",
@@ -248,14 +247,10 @@ class RemoteHandler:
             )
 
     def check_job_status(self, job_id: str) -> Dict[str, Any]:
-        """
-        Check the status of a submitted job on HPC system.
-
-        Args:
-            job_id: HPC job identifier
-
-        Returns:
-            Dictionary containing job status information
+        """!
+        @brief Check the status of a submitted job on the HPC system.
+        @param job_id: The HPC job identifier.
+        @return A dictionary containing job status information.
         """
         self.logger.debug(
             "Checking HPC job status", {"job_id": job_id}
@@ -294,15 +289,11 @@ class RemoteHandler:
             }
 
     def upload_file(self, local_file: Path, remote_dir: str) -> UploadResult:
-        """
-        Upload a single file to HPC system.
-
-        Args:
-            local_file: Path to local file to upload
-            remote_dir: Remote directory to upload to
-
-        Returns:
-            UploadResult indicating success/failure
+        """!
+        @brief Upload a single file to the HPC system.
+        @param local_file: Path to the local file to upload.
+        @param remote_dir: The remote directory to upload to.
+        @return An UploadResult indicating success or failure.
         """
         self.logger.debug(
             "Uploading file to HPC",
@@ -347,16 +338,12 @@ class RemoteHandler:
     def submit_simulation_job(
         self, beam_id: str, remote_beam_dir: str, gpu_uuid: str
     ) -> JobSubmissionResult:
-        """
-        Submit a MOQUI simulation job to the HPC system for a single beam.
-
-        Args:
-            beam_id: Beam identifier.
-            remote_beam_dir: Remote directory for job execution, containing all necessary files.
-            gpu_uuid: GPU UUID to use for simulation.
-
-        Returns:
-            JobSubmissionResult with job ID if successful.
+        """!
+        @brief Submit a MOQUI simulation job to the HPC system for a single beam.
+        @param beam_id: The beam identifier.
+        @param remote_beam_dir: The remote directory for job execution, containing all necessary files.
+        @param gpu_uuid: The GPU UUID to use for the simulation.
+        @return A JobSubmissionResult with the job ID if successful.
         """
         self.logger.info(
             "Submitting HPC simulation job for beam",
@@ -433,15 +420,11 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
     def wait_for_job_completion(
         self, job_id: str, timeout_seconds: int = 3600
     ) -> JobStatus:
-        """
-        Wait for HPC job to complete, polling at regular intervals.
-
-        Args:
-            job_id: HPC job identifier
-            timeout_seconds: Maximum time to wait for completion
-
-        Returns:
-            JobStatus indicating final job status
+        """!
+        @brief Wait for an HPC job to complete, polling at regular intervals.
+        @param job_id: The HPC job identifier.
+        @param timeout_seconds: The maximum time to wait for completion.
+        @return A JobStatus indicating the final job status.
         """
         self.logger.info(
             "Waiting for HPC job completion",
@@ -536,15 +519,11 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
         )
 
     def download_file(self, remote_file_path: str, local_dir: Path) -> DownloadResult:
-        """
-        Download a single file from HPC system.
-
-        Args:
-            remote_file_path: Path to remote file
-            local_dir: Local directory to download to
-
-        Returns:
-            DownloadResult indicating success/failure
+        """!
+        @brief Download a single file from the HPC system.
+        @param remote_file_path: The path to the remote file.
+        @param local_dir: The local directory to download to.
+        @return A DownloadResult indicating success or failure.
         """
         self.logger.debug(
             "Downloading file from HPC",
@@ -585,14 +564,10 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
             return DownloadResult(success=False, error=error_msg)
 
     def cleanup_remote_directory(self, remote_dir: str) -> bool:
-        """
-        Clean up remote directory and its contents.
-
-        Args:
-            remote_dir: Remote directory to clean up
-
-        Returns:
-            True if cleanup successful
+        """!
+        @brief Clean up a remote directory and its contents.
+        @param remote_dir: The remote directory to clean up.
+        @return True if cleanup was successful, False otherwise.
         """
         self.logger.debug("Cleaning up remote directory", {"remote_dir": remote_dir})
 
@@ -621,17 +596,23 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
             return False
 
     def __enter__(self):
-        """Context manager entry."""
+        """!
+        @brief Context manager entry.
+        """
         self.connect()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit with cleanup."""
+        """!
+        @brief Context manager exit with cleanup.
+        """
         self.disconnect()
 
     def _mkdir_p(self, sftp: SFTPClient, remote_directory: str):
-        """
-        Creates a directory and all its parents recursively on the remote server.
+        """!
+        @brief Creates a directory and all its parents recursively on the remote server.
+        @param sftp: The SFTP client.
+        @param remote_directory: The remote directory to create.
         """
         if remote_directory == "/":
             sftp.chdir("/")

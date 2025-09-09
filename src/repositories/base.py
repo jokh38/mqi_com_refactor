@@ -1,3 +1,7 @@
+"""!
+@file base.py
+@brief Contains the abstract base class for all repository implementations.
+"""
 from abc import ABC
 from typing import Optional, Any
 
@@ -6,21 +10,16 @@ from src.infrastructure.logging_handler import StructuredLogger
 
 
 class BaseRepository(ABC):
-    """
-    Abstract base class for all repository implementations.
-
-    FROM: Implements Repository Pattern as suggested in the refactoring plan
-          to decouple data access from business logic.
-    REFACTORING NOTES: Provides common database access patterns and error handling.
+    """!
+    @brief Abstract base class for all repository implementations.
+    @details This class provides common database access patterns and error handling.
     """
 
     def __init__(self, db_connection: DatabaseConnection, logger: StructuredLogger):
-        """
-        Initialize repository with database connection and logger.
-
-        Args:
-            db_connection: The database connection manager
-            logger: Logger for recording repository operations
+        """!
+        @brief Initialize the repository with a database connection and logger.
+        @param db_connection: The database connection manager.
+        @param logger: The logger for recording repository operations.
         """
         self.db = db_connection
         self.logger = logger
@@ -32,17 +31,13 @@ class BaseRepository(ABC):
         fetch_one: bool = False,
         fetch_all: bool = False,
     ) -> Optional[Any]:
-        """
-        Execute a database query with error handling and logging.
-
-        Args:
-            query: SQL query to execute
-            params: Parameters for the query
-            fetch_one: Whether to fetch one result
-            fetch_all: Whether to fetch all results
-
-        Returns:
-            Query results based on fetch parameters
+        """!
+        @brief Execute a database query with error handling and logging.
+        @param query: The SQL query to execute.
+        @param params: The parameters for the query.
+        @param fetch_one: Whether to fetch one result.
+        @param fetch_all: Whether to fetch all results.
+        @return The query results based on the fetch parameters.
         """
         try:
             with self.db.transaction() as conn:
@@ -63,13 +58,11 @@ class BaseRepository(ABC):
             raise
 
     def _log_operation(self, operation: str, entity_id: str = None, **context):
-        """
-        Log repository operations for debugging and monitoring.
-
-        Args:
-            operation: Description of the operation
-            entity_id: ID of the entity being operated on
-            **context: Additional context for logging
+        """!
+        @brief Log repository operations for debugging and monitoring.
+        @param operation: A description of the operation.
+        @param entity_id: The ID of the entity being operated on.
+        @param **context: Additional context for logging.
         """
         log_data = {"repository": self.__class__.__name__, "operation": operation}
 

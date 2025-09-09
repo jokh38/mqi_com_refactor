@@ -2,6 +2,10 @@
 # Target File: src/handlers/local_handler.py
 # Source Reference: src/local_handler.py
 # =====================================================================================
+"""!
+@file local_handler.py
+@brief Handles the execution of local command-line interface (CLI) tools.
+"""
 
 from typing import NamedTuple, Optional, Dict, Any
 from pathlib import Path
@@ -16,10 +20,8 @@ from src.domain.errors import ProcessingError
 
 
 class ExecutionResult(NamedTuple):
-    """
-    A structured result from subprocess execution.
-
-    FROM: Migrated from the ExecutionResult NamedTuple in original `local_handler.py`.
+    """!
+    @brief A structured result from subprocess execution.
     """
 
     success: bool
@@ -29,12 +31,10 @@ class ExecutionResult(NamedTuple):
 
 
 class LocalHandler:
-    """
-    Handles the execution of local command-line interface (CLI) tools.
-
-    FROM: Migrated from the original `LocalHandler` class in `local_handler.py`.
-    REFACTORING NOTES: Uses injected dependencies (CommandExecutor, RetryPolicy)
-                      instead of creating them internally.
+    """!
+    @brief Handles the execution of local command-line interface (CLI) tools.
+    @details This class uses injected dependencies (CommandExecutor, RetryPolicy)
+             to execute commands with a retry policy.
     """
 
     def __init__(
@@ -44,16 +44,12 @@ class LocalHandler:
         command_executor: CommandExecutor,
         retry_policy: RetryPolicy,
     ):
-        """
-        Initializes the LocalHandler with injected dependencies.
-
-        FROM: Original `__init__` method with dependency injection improvements.
-
-        Args:
-            settings: Application settings
-            logger: Logger for recording events
-            command_executor: Command execution service
-            retry_policy: Retry policy for failed executions
+        """!
+        @brief Initializes the LocalHandler with injected dependencies.
+        @param settings: Application settings.
+        @param logger: Logger for recording events.
+        @param command_executor: Command execution service.
+        @param retry_policy: Retry policy for failed executions.
         """
         self.settings = settings
         self.logger = logger
@@ -64,23 +60,17 @@ class LocalHandler:
         self.python_interpreter = self._get_python_interpreter()
 
     def _get_python_interpreter(self) -> str:
-        """
-        Get the Python interpreter path from configuration.
-
-        FROM: Python interpreter detection logic from original local_handler.py.
-        REFACTORING NOTES: Externalized to configuration instead of hardcoding.
+        """!
+        @brief Get the Python interpreter path from configuration.
+        @return The path to the Python interpreter.
         """
         return self.settings.get_executables().get("python_interpreter", "python3")
 
     def _convert_windows_path_to_wsl(self, path: str) -> str:
-        """
-        Convert Windows path to WSL path if running in WSL environment.
-        
-        Args:
-            path: Path string that might be a Windows path
-            
-        Returns:
-            Path converted to WSL format if necessary
+        """!
+        @brief Convert a Windows path to a WSL path if running in a WSL environment.
+        @param path: The path string that might be a Windows path.
+        @return The path converted to WSL format if necessary.
         """
         # Check if we're running in WSL
         if platform.system() == "Linux" and "microsoft" in platform.release().lower():
@@ -93,21 +83,15 @@ class LocalHandler:
         return path
 
     def _build_command_from_template(self, template_name: str, **kwargs) -> list[str]:
-        """
-        config.yaml의 템플릿과 동적 인자를 결합하여 최종 실행 명령어를 생성합니다.
-
-        Args:
-            template_name: config.yaml의 command_templates에서 사용할 템플릿 이름
-            **kwargs: 템플릿에 전달할 동적 인자들
-
-        Returns:
-            subprocess에서 사용할 수 있는 명령어 리스트
-        
-        Raises:
-            ProcessingError: 템플릿을 찾을 수 없거나 포맷팅에 실패한 경우
+        """!
+        @brief Builds the final execution command by combining a template from config.yaml with dynamic arguments.
+        @param template_name: The name of the template to use from command_templates in config.yaml.
+        @param **kwargs: Dynamic arguments to pass to the template.
+        @return A list of strings representing the command, suitable for use with subprocess.
+        @raises ProcessingError: If the template cannot be found or formatting fails.
         """
         try:
-            # config.yaml에서 command_templates 가져오기
+            # Get command_templates from config.yaml
             command_templates = getattr(self.settings, 'command_templates', {})
             if template_name not in command_templates:
                 raise ProcessingError(f"Command template '{template_name}' not found in config.yaml")
@@ -128,13 +112,13 @@ class LocalHandler:
                 else:
                     converted_kwargs[key] = value
             
-            # 동적 인자와 설정의 경로를 결합
+            # Combine dynamic arguments and configured paths
             all_format_args = {**converted_executables, **converted_kwargs}
             
-            # 템플릿의 플레이스홀더를 실제 값으로 치환
+            # Replace placeholders in the template with actual values
             formatted_command = template.format(**all_format_args)
             
-            # 문자열을 subprocess가 사용할 리스트로 안전하게 분리
+            # Safely split the string into a list for subprocess
             return shlex.split(formatted_command)
             
         except KeyError as e:
@@ -150,18 +134,14 @@ class LocalHandler:
         operation_name: str,
         log_message: str,
     ) -> ExecutionResult:
-        """
-        A generic helper to execute a local command with a retry policy.
-
-        Args:
-            case_id: Case identifier for logging.
-            case_path: Path to the case directory (CWD for the command).
-            command: The command to execute as a list of strings.
-            operation_name: A unique name for the operation (for retry policy).
-            log_message: The message to log for this operation.
-
-        Returns:
-            ExecutionResult containing the outcome of the execution.
+        """!
+        @brief A generic helper to execute a local command with a retry policy.
+        @param case_id: Case identifier for logging.
+        @param case_path: Path to the case directory (CWD for the command).
+        @param command: The command to execute as a list of strings.
+        @param operation_name: A unique name for the operation (for retry policy).
+        @param log_message: The message to log for this operation.
+        @return ExecutionResult containing the outcome of the execution.
         """
         self.logger.info(
             log_message,
@@ -222,8 +202,12 @@ class LocalHandler:
         case_path: Path,
         command: list[str],
     ) -> ExecutionResult:
-        """
-        Executes the mqi_interpreter using a generalized command runner.
+        """!
+        @brief Executes the mqi_interpreter using a generalized command runner.
+        @param case_id: The case identifier for logging.
+        @param case_path: The path to the case directory.
+        @param command: The command to execute.
+        @return An ExecutionResult containing the outcome.
         """
         return self._execute_command_with_retry(
             case_id=case_id,
@@ -239,8 +223,12 @@ class LocalHandler:
         case_path: Path,
         command: list[str],
     ) -> ExecutionResult:
-        """
-        Executes the RawToDCM converter using a generalized command runner.
+        """!
+        @brief Executes the RawToDCM converter using a generalized command runner.
+        @param case_id: The case identifier for logging.
+        @param case_path: The path to the case directory.
+        @param command: The command to execute.
+        @return An ExecutionResult containing the outcome.
         """
         return self._execute_command_with_retry(
             case_id=case_id,
@@ -251,17 +239,10 @@ class LocalHandler:
         )
 
     def validate_case_structure(self, case_path: Path) -> bool:
-        """
-        Validate that case directory has required structure and files.
-
-        FROM: Path validation logic scattered throughout original handlers.
-        REFACTORING NOTES: Centralized validation with proper error reporting.
-
-        Args:
-            case_path: Path to case directory
-
-        Returns:
-            True if case structure is valid
+        """!
+        @brief Validate that the case directory has the required structure and files.
+        @param case_path: Path to the case directory.
+        @return True if the case structure is valid, False otherwise.
         """
         self.logger.debug("Validating case structure", {"case_path": str(case_path)})
 
@@ -296,24 +277,20 @@ class LocalHandler:
     def run_mqi_interpreter(
         self, beam_directory: Path, output_dir: Path, case_id: Optional[str] = None
     ) -> ExecutionResult:
-        """
-        mqi_interpreter 실행을 위한 Wrapper 메서드.
-        템플릿에 필요한 동적 인자를 정의하고, 명령어 생성을 위임합니다.
-
-        Args:
-            beam_directory: Path to the beam directory (or case directory).
-            output_dir: Path to the output directory for generated files.
-            case_id: Optional case_id. If not provided, it's inferred from the parent directory.
-
-        Returns:
-            ExecutionResult containing execution details.
+        """!
+        @brief Wrapper method for running the mqi_interpreter.
+        @details Defines the dynamic arguments needed for the template and delegates command creation.
+        @param beam_directory: Path to the beam directory (or case directory).
+        @param output_dir: Path to the output directory for generated files.
+        @param case_id: Optional case_id. If not provided, it's inferred from the parent directory.
+        @return ExecutionResult containing execution details.
         """
         dynamic_args = {
             "beam_directory": str(beam_directory),
             "output_dir": str(output_dir),
         }
 
-        # 범용 빌더를 호출하여 명령어 생성
+        # Call the generic builder to create the command
         command_to_execute = self._build_command_from_template(
             "mqi_interpreter", **dynamic_args
         )
@@ -322,34 +299,30 @@ class LocalHandler:
         # Otherwise, use the provided case_id (for case-level calls)
         id_to_use = case_id if case_id is not None else beam_directory.parent.name
 
-        # execute_mqi_interpreter는 이제 미리 빌드된 명령어를 받아 실행만 담당
+        # execute_mqi_interpreter now only takes the pre-built command and executes it
         return self.execute_mqi_interpreter(id_to_use, beam_directory, command_to_execute)
 
     def run_raw_to_dcm(
         self, input_file: Path, output_dir: Path, case_path: Path
     ) -> ExecutionResult:
-        """
-        RawToDCM 실행을 위한 Wrapper 메서드.
-        템플릿에 필요한 동적 인자를 정의하고, 명령어 생성을 위임합니다.
-
-        Args:
-            input_file: Input .raw file
-            output_dir: Output directory for DCM files
-            case_path: Case directory path
-
-        Returns:
-            ExecutionResult containing execution details
+        """!
+        @brief Wrapper method for running RawToDCM.
+        @details Defines the dynamic arguments needed for the template and delegates command creation.
+        @param input_file: Input .raw file.
+        @param output_dir: Output directory for DCM files.
+        @param case_path: Case directory path.
+        @return ExecutionResult containing execution details.
         """
         dynamic_args = {
             "input_file": str(input_file),
             "output_dir": str(output_dir),
         }
 
-        # 범용 빌더를 호출하여 명령어 생성
+        # Call the generic builder to create the command
         command_to_execute = self._build_command_from_template(
             "raw_to_dicom", **dynamic_args
         )
         
         case_id = case_path.name  # Use directory name as case_id
-        # execute_raw_to_dicom는 이제 미리 빌드된 명령어를 받아 실행만 담당
+        # execute_raw_to_dicom now only takes the pre-built command and executes it
         return self.execute_raw_to_dicom(case_id, case_path, command_to_execute)

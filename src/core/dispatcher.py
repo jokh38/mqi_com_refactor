@@ -1,6 +1,10 @@
 # =====================================================================================
 # Target File: src/core/dispatcher.py
 # =====================================================================================
+"""!
+@file dispatcher.py
+@brief Contains logic for dispatching cases and beams for processing.
+"""
 
 from pathlib import Path
 from typing import List, Dict, Any
@@ -17,16 +21,12 @@ from src.domain.errors import ProcessingError
 
 
 def run_case_level_preprocessing(case_id: str, case_path: Path, settings: Settings) -> bool:
-    """
-    Runs the mqi_interpreter for the entire case before beam-level processing.
-
-    Args:
-        case_id: The ID of the case.
-        case_path: The file system path to the case directory.
-        settings: The application settings object.
-
-    Returns:
-        True if preprocessing was successful, False otherwise.
+    """!
+    @brief Runs the mqi_interpreter for the entire case before beam-level processing.
+    @param case_id: The ID of the case.
+    @param case_path: The file system path to the case directory.
+    @param settings: The application settings object.
+    @return True if preprocessing was successful, False otherwise.
     """
     logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
     db_connection = None
@@ -114,18 +114,14 @@ def run_case_level_preprocessing(case_id: str, case_path: Path, settings: Settin
 def prepare_beam_jobs(
     case_id: str, case_path: Path, settings: Settings
 ) -> List[Dict[str, Any]]:
-    """
-    Scans a case directory for beams, creates records for them in the database,
-    and returns a list of jobs to be processed by workers.
-
-    Args:
-        case_id: The ID of the parent case.
-        case_path: The file system path to the case directory.
-        settings: The application settings object.
-
-    Returns:
-        A list of dictionaries, each representing a beam job to be executed.
-        Returns an empty list if no beams are found or an error occurs.
+    """!
+    @brief Scans a case directory for beams, creates records for them in the database,
+           and returns a list of jobs to be processed by workers.
+    @param case_id: The ID of the parent case.
+    @param case_path: The file system path to the case directory.
+    @param settings: The application settings object.
+    @return A list of dictionaries, each representing a beam job to be executed.
+            Returns an empty list if no beams are found or an error occurs.
     """
     logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
     db_connection = None
