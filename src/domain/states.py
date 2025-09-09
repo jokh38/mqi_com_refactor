@@ -2,6 +2,10 @@
 # Target File: src/domain/states.py
 # Source Reference: src/states.py
 # =====================================================================================
+"""!
+@file states.py
+@brief Defines the state machine for the workflow using the State pattern.
+"""
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
@@ -18,9 +22,9 @@ from pathlib import Path
 
 
 def handle_state_exceptions(func: Callable[..., Any]) -> Callable[..., Any]:
-    """
-    A decorator to handle common exceptions in WorkflowState execute methods.
-    It logs the error, updates the beam status to FAILED, and returns a FailedState.
+    """!
+    @brief A decorator to handle common exceptions in WorkflowState execute methods.
+    @details It logs the error, updates the beam status to FAILED, and returns a FailedState.
     """
     @wraps(func)
     def wrapper(state_instance: 'WorkflowState', context: 'WorkflowManager') -> Optional['WorkflowState']:
@@ -47,38 +51,36 @@ def handle_state_exceptions(func: Callable[..., Any]) -> Callable[..., Any]:
 
 
 class WorkflowState(ABC):
-    """
-    Abstract base class for workflow states implementing the State pattern.
-    FROM: Migrated from original states.py state machine implementation.
+    """!
+    @brief Abstract base class for workflow states implementing the State pattern.
     """
 
     @abstractmethod
     def execute(self, context: 'WorkflowManager') -> Optional[WorkflowState]:
-        """
-        Execute the current state and return the next state.
-        
-        Args:
-            context: The workflow manager providing access to repositories and handlers
-            
-        Returns:
-            The next state to transition to, or None to terminate.
+        """!
+        @brief Execute the current state and return the next state.
+        @param context: The workflow manager providing access to repositories and handlers.
+        @return The next state to transition to, or None to terminate.
         """
         pass
 
     @abstractmethod
     def get_state_name(self) -> str:
-        """Return the human-readable name of this state."""
+        """!
+        @brief Return the human-readable name of this state.
+        @return The name of the state.
+        """
         pass
 
 class InitialState(WorkflowState):
-    """
-    Initial state for a new beam - validates beam structure and generates moqui_tps.in.
+    """!
+    @brief Initial state for a new beam - validates beam structure and generates moqui_tps.in.
     """
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Perform initial validation for the beam and generate its moqui_tps.in file.
+        """!
+        @brief Perform initial validation for the beam and generate its moqui_tps.in file.
         """
         context.logger.info("Performing initial validation and moqui_tps.in generation for beam", {
             "beam_id": context.id,
@@ -133,14 +135,14 @@ class InitialState(WorkflowState):
         return "Initial Validation"
 
 class FileUploadState(WorkflowState):
-    """
-    File upload state - uploads beam-specific files to a dedicated directory on the HPC.
+    """!
+    @brief File upload state - uploads beam-specific files to a dedicated directory on the HPC.
     """
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Uploads moqui_tps.in and all *.csv files from the local beam directory to the HPC.
+        """!
+        @brief Uploads moqui_tps.in and all *.csv files from the local beam directory to the HPC.
         """
         context.logger.info("Uploading beam files to HPC", {"beam_id": context.id})
         context.case_repo.update_beam_status(context.id, BeamStatus.UPLOADING)
@@ -189,14 +191,14 @@ class FileUploadState(WorkflowState):
 
 
 class HpcExecutionState(WorkflowState):
-    """
-    HPC execution state - runs MOQUI simulation on HPC for a single beam.
+    """!
+    @brief HPC execution state - runs MOQUI simulation on HPC for a single beam.
     """
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Submits a MOQUI simulation job for the beam and polls for completion.
+        """!
+        @brief Submits a MOQUI simulation job for the beam and polls for completion.
         """
         context.logger.info("Starting HPC simulation for beam", {"beam_id": context.id})
         
@@ -249,14 +251,14 @@ class HpcExecutionState(WorkflowState):
 
 
 class DownloadState(WorkflowState):
-    """
-    Download state - downloads the raw result file from the HPC for a single beam.
+    """!
+    @brief Download state - downloads the raw result file from the HPC for a single beam.
     """
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Downloads the 'output.raw' file from the remote beam directory to a local results directory.
+        """!
+        @brief Downloads the 'output.raw' file from the remote beam directory to a local results directory.
         """
         context.logger.info("Downloading results from HPC for beam", {"beam_id": context.id})
         context.case_repo.update_beam_status(context.id, BeamStatus.DOWNLOADING)
@@ -302,14 +304,14 @@ class DownloadState(WorkflowState):
         return "Download Results"
 
 class PostprocessingState(WorkflowState):
-    """
-    Postprocessing state - runs RawToDCM locally for a single beam's output.
+    """!
+    @brief Postprocessing state - runs RawToDCM locally for a single beam's output.
     """
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """
-        Execute local postprocessing using RawToDCM on the downloaded raw file.
+        """!
+        @brief Execute local postprocessing using RawToDCM on the downloaded raw file.
         """
         context.logger.info("Running RawToDCM postprocessing for beam", {"beam_id": context.id})
         context.case_repo.update_beam_status(context.id, BeamStatus.POSTPROCESSING)
@@ -348,13 +350,13 @@ class PostprocessingState(WorkflowState):
         return "Postprocessing"
 
 class CompletedState(WorkflowState):
-    """
-    Final completed state for a beam.
+    """!
+    @brief Final completed state for a beam.
     """
 
     def execute(self, context: 'WorkflowManager') -> Optional[WorkflowState]:
-        """
-        Handles completion tasks for the beam.
+        """!
+        @brief Handles completion tasks for the beam.
         """
         context.logger.info("Beam workflow completed successfully", {
             "beam_id": context.id,
@@ -382,13 +384,13 @@ class CompletedState(WorkflowState):
         return "Completed"
 
 class FailedState(WorkflowState):
-    """
-    Failed state for beam error handling.
+    """!
+    @brief Failed state for beam error handling.
     """
 
     def execute(self, context: 'WorkflowManager') -> Optional[WorkflowState]:
-        """
-        Handles failure cleanup for the beam.
+        """!
+        @brief Handles failure cleanup for the beam.
         """
         context.logger.error("Beam workflow entered failed state", {
             "beam_id": context.id

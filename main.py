@@ -4,21 +4,14 @@
 # Source Reference: src/main.py
 # =====================================================================================
 
-"""
-Main entry point for the MQI Communicator application.
-
-FROM: Refactored from original main.py, simplified to focus only on:
-- File system event detection 
-- Process pool management
-- Application lifecycle (start/stop)
-
-RESPONSIBILITY: 
-- Watch for new case directories
-- Manage worker process pool  
-- Coordinate application startup/shutdown
-- Handle top-level error recovery
-
-The complex dependency injection logic has been moved to src/core/worker.py
+"""!
+@file main.py
+@brief Main entry point for the MQI Communicator application.
+@details This script is responsible for:
+- Watching for new case directories.
+- Managing a worker process pool to handle case processing.
+- Coordinating the application startup and shutdown.
+- Handling top-level error recovery.
 """
 
 import sys
@@ -48,16 +41,13 @@ from src.core.dispatcher import prepare_beam_jobs, run_case_level_preprocessing
 
 
 def scan_existing_cases(case_queue: mp.Queue, settings: Settings, logger: StructuredLogger) -> None:
-    """
-    Scan the scan_directory at startup for existing cases and add any missing ones to the processing queue.
-    
-    This function compares case directories found in the file system with those already recorded
-    in the database and queues any new cases for processing.
-    
-    Args:
-        case_queue: Queue for communicating new cases to worker processes
-        settings: Application settings containing directory paths
-        logger: Logger for recording operations
+    """!
+    @brief Scan for existing cases at startup.
+    @details Compares file system cases with database records and queues new cases.
+    @param case_queue: mp.Queue The queue to add new cases to.
+    @param settings: Settings The application settings.
+    @param logger: StructuredLogger The logger for recording events.
+    @return None
     """
     try:
         # Get scan directory from settings
@@ -121,33 +111,27 @@ def scan_existing_cases(case_queue: mp.Queue, settings: Settings, logger: Struct
 
 
 class CaseDetectionHandler(FileSystemEventHandler):
-    """
-    File system event handler for detecting new case directories.
-    
-    FROM: CaseDetectionHandler class from original main.py
-    RESPONSIBILITY: Monitor directory creation events and queue new cases for processing.
+    """!
+    @brief Handles file system events to detect new case directories.
+    @details This handler watches for directory creation events and queues new cases for processing.
     """
     
     def __init__(self, case_queue: mp.Queue, logger: StructuredLogger):
-        """
-        Initialize the case detection handler.
-        
-        Args:
-            case_queue: Queue for communicating new cases to worker processes
-            logger: Logger for recording events
+        """!
+        @brief Initializes the CaseDetectionHandler.
+        @param case_queue: mp.Queue The queue for new cases.
+        @param logger: StructuredLogger The logger for recording events.
         """
         super().__init__()
         self.case_queue = case_queue
         self.logger = logger
         
     def on_created(self, event) -> None:
-        """
-        Handle directory creation events.
-        
-        FROM: on_created method from original CaseDetectionHandler.
-        
-        Args:
-            event: File system event from watchdog
+        """!
+        @brief Handles the 'created' event from the file system watcher.
+        @details Checks if a directory was created and, if so, queues it as a new case.
+        @param event: The file system event.
+        @return: None
         """
         if not event.is_directory:
             return
@@ -171,19 +155,16 @@ class CaseDetectionHandler(FileSystemEventHandler):
 
 
 class MQIApplication:
-    """
-    Main application controller.
-    
-    FROM: Main application logic from original main.py, but simplified.
-    RESPONSIBILITY: Coordinate application lifecycle and component management.
+    """!
+    @brief Main application controller for the MQI Communicator.
+    @details Manages the lifecycle of the application, including initialization,
+             coordination of components, and graceful shutdown.
     """
     
     def __init__(self, config_path: Optional[Path] = None):
-        """
-        Initialize the MQI application.
-        
-        Args:
-            config_path: Path to configuration file
+        """!
+        @brief Initializes the MQIApplication instance.
+        @param config_path: Optional[Path] The path to the configuration file.
         """
         self.settings = Settings(config_path)
         self.logger: Optional[StructuredLogger] = None
@@ -196,10 +177,10 @@ class MQIApplication:
         self.shutdown_event = threading.Event()
         
     def initialize_logging(self) -> None:
-        """
-        Initialize logging system.
-        
-        FROM: Logging initialization from original main.py.
+        """!
+        @brief Initializes the structured logging for the application.
+        @details Exits the application if logging cannot be initialized.
+        @return: None
         """
         try:
             self.logger = StructuredLogger(
@@ -212,10 +193,10 @@ class MQIApplication:
             sys.exit(1)
     
     def initialize_database(self) -> None:
-        """
-        Initialize database and ensure schema exists.
-        
-        FROM: Database initialization from original main.py.
+        """!
+        @brief Initializes the database connection and schema.
+        @details Exits the application if the database cannot be initialized.
+        @return: None
         """
         try:
             db_path = self.settings.get_database_path()
@@ -236,10 +217,9 @@ class MQIApplication:
             sys.exit(1)
     
     def start_file_watcher(self) -> None:
-        """
-        Start file system watcher for new cases.
-        
-        FROM: File watcher setup from original main.py.
+        """!
+        @brief Starts the file system watcher to detect new cases.
+        @return: None
         """
         try:
             case_dirs = self.settings.get_case_directories()
@@ -260,10 +240,9 @@ class MQIApplication:
             self.logger.error("Failed to start file watcher", {"error": str(e)})
     
     def start_dashboard(self) -> None:
-        """
-        Start the dashboard UI as a separate process if configured.
-        
-        FROM: Dashboard startup from original main.py, modified to use UIProcessManager.
+        """!
+        @brief Starts the dashboard UI in a separate process if configured.
+        @return: None
         """
         try:
             if not self.settings.ui.auto_start:
@@ -290,8 +269,9 @@ class MQIApplication:
             self.logger.error("Failed to start dashboard", {"error": str(e)})
     
     def start_gpu_monitor(self) -> None:
-        """
-        Start the GPU monitoring service as a background thread.
+        """!
+        @brief Starts the GPU monitoring service in a background thread.
+        @return: None
         """
         try:
             self.logger.info("Initializing GPU monitoring service.")
@@ -335,11 +315,10 @@ class MQIApplication:
             self.logger.error("Failed to start GPU monitor", {"error": str(e)})
 
     def run_worker_loop(self) -> None:
-        """
-        Main worker processing loop.
-        
-        FROM: Worker loop from original main.py, simplified.
-        RESPONSIBILITY: Process queued cases using worker pool.
+        """!
+        @brief The main loop for processing cases from the queue.
+        @details Manages a process pool to handle cases concurrently.
+        @return: None
         """
         max_workers = self.settings.processing.max_workers
         
@@ -418,10 +397,9 @@ class MQIApplication:
                 time.sleep(1)
     
     def shutdown(self) -> None:
-        """
-        Graceful shutdown of all components.
-        
-        FROM: Shutdown logic from original main.py.
+        """!
+        @brief Performs a graceful shutdown of all application components.
+        @return: None
         """
         self.logger.info("Shutting down MQI Communicator")
         self.shutdown_event.set()
@@ -448,10 +426,10 @@ class MQIApplication:
         self.logger.info("Shutdown complete")
     
     def run(self) -> NoReturn:
-        """
-        Main application entry point.
-        
-        FROM: main() function from original main.py, refactored.
+        """!
+        @brief The main entry point for running the application.
+        @details Initializes and starts all components, then enters the main processing loop.
+        @return: NoReturn
         """
         try:
             # Initialize core components
@@ -482,10 +460,10 @@ class MQIApplication:
 
 
 def setup_signal_handlers(app: MQIApplication) -> None:
-    """
-    Setup signal handlers for graceful shutdown.
-    
-    FROM: Signal handling from original main.py.
+    """!
+    @brief Sets up signal handlers for graceful application shutdown.
+    @param app: MQIApplication The application instance to shut down on signal.
+    @return: None
     """
     def signal_handler(signum, frame):
         # Using print() here can corrupt the rich display during shutdown.
@@ -503,13 +481,11 @@ def setup_signal_handlers(app: MQIApplication) -> None:
 
 
 def main() -> NoReturn:
-    """
-    Application entry point.
-    
-    FROM: Main entry point from original main.py, simplified.
-    
-    Usage:
-        python main.py [config_file]
+    """!
+    @brief The main entry point of the application.
+    @details Parses command-line arguments for a configuration file,
+             initializes and runs the MQIApplication.
+    @return: NoReturn
     """
     # Determine config file path
     config_path = None

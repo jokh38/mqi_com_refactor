@@ -2,6 +2,10 @@
 # Target File: src/repositories/case_repo.py
 # Source Reference: src/database_handler.py (cases table operations)
 # =====================================================================================
+"""!
+@file case_repo.py
+@brief Manages all CRUD operations for the 'cases' and related tables.
+"""
 
 import json
 from datetime import datetime
@@ -16,34 +20,24 @@ from src.repositories.base import BaseRepository
 
 
 class CaseRepository(BaseRepository):
-    """
-    Manages all CRUD operations for the 'cases' table.
-
-    FROM: Extracts all case-related methods (e.g., `add_case`, `update_case_status`)
-          from the original `database_handler.py`.
-    REFACTORING NOTES: Implements Repository Pattern for case data access.
+    """!
+    @brief Manages all CRUD operations for the 'cases' table.
+    @details This class implements the Repository Pattern for case data access.
     """
 
     def __init__(self, db_connection: DatabaseConnection, logger: StructuredLogger):
-        """
-        Initializes the case repository with injected database connection.
-
-        Args:
-            db_connection: Database connection manager
-            logger: Logger for recording operations
+        """!
+        @brief Initializes the case repository with an injected database connection.
+        @param db_connection: The database connection manager.
+        @param logger: The logger for recording operations.
         """
         super().__init__(db_connection, logger)
 
     def add_case(self, case_id: str, case_path: Path) -> None:
-        """
-        Adds a new case to the 'cases' table.
-
-        FROM: Migrated from the `add_case` method in `database_handler.py`.
-        REFACTORING NOTES: Uses `CaseStatus.PENDING` enum for status consistency.
-
-        Args:
-            case_id: Unique identifier for the case
-            case_path: Path to the case directory
+        """!
+        @brief Adds a new case to the 'cases' table.
+        @param case_id: The unique identifier for the case.
+        @param case_path: The path to the case directory.
         """
         self._log_operation("add_case", case_id, case_path=str(case_path))
 
@@ -73,16 +67,12 @@ class CaseRepository(BaseRepository):
         progress: float = None,
         error_message: str = None,
     ) -> None:
-        """
-        Updates the status and progress of a case.
-
-        FROM: Migrated from `update_case_status` method in `database_handler.py`.
-
-        Args:
-            case_id: Case identifier
-            status: New case status
-            progress: Optional progress percentage (0-100)
-            error_message: Optional error message for failed cases
+        """!
+        @brief Updates the status and progress of a case.
+        @param case_id: The case identifier.
+        @param status: The new case status.
+        @param progress: An optional progress percentage (0-100).
+        @param error_message: An optional error message for failed cases.
         """
         self._log_operation(
             "update_case_status", case_id, status=status.value, progress=progress
@@ -111,16 +101,10 @@ class CaseRepository(BaseRepository):
         )
 
     def get_case(self, case_id: str) -> Optional[CaseData]:
-        """
-        Retrieves a single case by its ID.
-
-        FROM: Migrated from case retrieval logic in `database_handler.py`.
-
-        Args:
-            case_id: Case identifier
-
-        Returns:
-            CaseData object if found, None otherwise
+        """!
+        @brief Retrieves a single case by its ID.
+        @param case_id: The case identifier.
+        @return A CaseData object if found, None otherwise.
         """
         self._log_operation("get_case", case_id)
 
@@ -152,16 +136,10 @@ class CaseRepository(BaseRepository):
         return None
 
     def get_cases_by_status(self, status: CaseStatus) -> List[CaseData]:
-        """
-        Retrieves all cases with a specific status.
-
-        FROM: Migrated from status-based case queries in `database_handler.py`.
-
-        Args:
-            status: Case status to filter by
-
-        Returns:
-            List of CaseData objects matching the status
+        """!
+        @brief Retrieves all cases with a specific status.
+        @param status: The case status to filter by.
+        @return A list of CaseData objects matching the status.
         """
         self._log_operation("get_cases_by_status", status=status.value)
 
@@ -197,14 +175,11 @@ class CaseRepository(BaseRepository):
         return cases
 
     def get_all_case_ids(self) -> List[str]:
-        """
-        Retrieves all case IDs from the database.
-        
-        Optimized method for startup scanning that only fetches case IDs
-        instead of full case data for better performance.
-        
-        Returns:
-            List of case IDs currently in the database
+        """!
+        @brief Retrieves all case IDs from the database.
+        @details This is an optimized method for startup scanning that only fetches case IDs
+                 instead of full case data for better performance.
+        @return A list of case IDs currently in the database.
         """
         self._log_operation("get_all_case_ids")
         
@@ -230,17 +205,15 @@ class CaseRepository(BaseRepository):
         step_name: str = None,  # Added for backward compatibility
         details: str = None,    # Added for backward compatibility
     ) -> None:
-        """
-        Records the start or completion of a workflow step.
-
-        FROM: Migrated from workflow step recording in `database_handler.py`.
-
-        Args:
-            case_id: Case identifier
-            step: Workflow step being recorded
-            status: Step status ('started', 'completed', 'failed')
-            error_message: Optional error message for failed steps
-            metadata: Optional metadata dictionary
+        """!
+        @brief Records the start or completion of a workflow step.
+        @param case_id: The case identifier.
+        @param step: The workflow step being recorded.
+        @param status: The step status ('started', 'completed', 'failed').
+        @param error_message: An optional error message for failed steps.
+        @param metadata: An optional metadata dictionary.
+        @param step_name: (Backward compatibility) The name of the step.
+        @param details: (Backward compatibility) The details of the step.
         """
         # Handle backward compatibility
         if step_name is not None:
@@ -271,16 +244,10 @@ class CaseRepository(BaseRepository):
         )
 
     def get_workflow_steps(self, case_id: str) -> List[WorkflowStepRecord]:
-        """
-        Retrieves all workflow steps for a given case.
-
-        FROM: Workflow step retrieval from `database_handler.py`.
-
-        Args:
-            case_id: Case identifier
-
-        Returns:
-            List of WorkflowStepRecord objects
+        """!
+        @brief Retrieves all workflow steps for a given case.
+        @param case_id: The case identifier.
+        @return A list of WorkflowStepRecord objects.
         """
         self._log_operation("get_workflow_steps", case_id)
 
@@ -317,14 +284,10 @@ class CaseRepository(BaseRepository):
         return steps
 
     def assign_gpu_to_case(self, case_id: str, gpu_uuid: str) -> None:
-        """
-        Assigns a GPU to a specific case.
-
-        FROM: GPU assignment logic from `database_handler.py`.
-
-        Args:
-            case_id: Case identifier
-            gpu_uuid: UUID of the GPU to assign
+        """!
+        @brief Assigns a GPU to a specific case.
+        @param case_id: The case identifier.
+        @param gpu_uuid: The UUID of the GPU to assign.
         """
         self._log_operation("assign_gpu_to_case", case_id, gpu_uuid=gpu_uuid)
 
@@ -346,7 +309,12 @@ class CaseRepository(BaseRepository):
     def create_beam_record(
         self, beam_id: str, parent_case_id: str, beam_path: Path
     ) -> None:
-        """Adds a new beam to the 'beams' table."""
+        """!
+        @brief Adds a new beam to the 'beams' table.
+        @param beam_id: The unique identifier for the beam.
+        @param parent_case_id: The ID of the parent case.
+        @param beam_path: The path to the beam directory.
+        """
         self._log_operation(
             "create_beam_record",
             beam_id=beam_id,
@@ -371,7 +339,12 @@ class CaseRepository(BaseRepository):
     def update_beam_status(
         self, beam_id: str, status: BeamStatus, error_message: Optional[str] = None
     ) -> None:
-        """Updates the status of a beam."""
+        """!
+        @brief Updates the status of a beam.
+        @param beam_id: The beam identifier.
+        @param status: The new beam status.
+        @param error_message: An optional error message for failed beams.
+        """
         self._log_operation(
             "update_beam_status", beam_id=beam_id, status=status.value
         )
@@ -390,7 +363,11 @@ class CaseRepository(BaseRepository):
         )
 
     def get_beam(self, beam_id: str) -> Optional[BeamData]:
-        """Retrieves a single beam by its ID."""
+        """!
+        @brief Retrieves a single beam by its ID.
+        @param beam_id: The beam identifier.
+        @return A BeamData object if found, None otherwise.
+        """
         self._log_operation("get_beam", beam_id=beam_id)
         query = "SELECT * FROM beams WHERE beam_id = ?"
         row = self._execute_query(query, (beam_id,), fetch_one=True)
@@ -411,7 +388,11 @@ class CaseRepository(BaseRepository):
         return None
 
     def assign_hpc_job_id_to_beam(self, beam_id: str, hpc_job_id: str) -> None:
-        """Assigns an HPC job ID to a specific beam."""
+        """!
+        @brief Assigns an HPC job ID to a specific beam.
+        @param beam_id: The beam identifier.
+        @param hpc_job_id: The HPC job ID to assign.
+        """
         self._log_operation(
             "assign_hpc_job_id_to_beam", beam_id=beam_id, hpc_job_id=hpc_job_id
         )
@@ -423,7 +404,11 @@ class CaseRepository(BaseRepository):
         )
 
     def get_beams_for_case(self, case_id: str) -> List[BeamData]:
-        """Retrieves all beams associated with a given case."""
+        """!
+        @brief Retrieves all beams associated with a given case.
+        @param case_id: The case identifier.
+        @return A list of BeamData objects.
+        """
         self._log_operation("get_beams_for_case", case_id=case_id)
         query = "SELECT * FROM beams WHERE parent_case_id = ? ORDER BY beam_id ASC"
         rows = self._execute_query(query, (case_id,), fetch_all=True)
@@ -447,13 +432,9 @@ class CaseRepository(BaseRepository):
         return beams
 
     def get_all_active_cases(self) -> List[CaseData]:
-        """
-        Retrieves all cases that are currently active (not completed or failed).
-
-        FROM: Active case queries from original display handler logic.
-
-        Returns:
-            List of active CaseData objects
+        """!
+        @brief Retrieves all cases that are currently active (not completed or failed).
+        @return A list of active CaseData objects.
         """
         self._log_operation("get_all_active_cases")
 

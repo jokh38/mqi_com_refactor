@@ -3,12 +3,12 @@
 # Source Reference: Constants scattered throughout original codebase
 # =====================================================================================
 
-"""
-Developer-managed constants that are fixed values in the application logic.
-These values should NOT be configurable via config.yaml or environment variables.
-They represent hardcoded application behavior that requires code changes to modify.
-
-FROM: Refactoring guide - "Fixed values managed by the developer should be defined here"
+"""!
+@file constants.py
+@brief Defines developer-managed constants for the application.
+@details These constants are fixed values that are not meant to be configured
+         by users. They represent hardcoded application behavior and data
+         structures.
 """
 
 from pathlib import Path

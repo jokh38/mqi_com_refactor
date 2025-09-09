@@ -2,6 +2,10 @@
 # Target File: src/domain/models.py
 # Source Reference: Data structures from various original files
 # =====================================================================================
+"""!
+@file models.py
+@brief Defines Data Transfer Objects (DTOs) for the application's domain models.
+"""
 
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
@@ -12,9 +16,8 @@ from src.domain.enums import CaseStatus, GpuStatus, WorkflowStep, BeamStatus
 
 @dataclass
 class CaseData:
-    """
-    Data Transfer Object for case information.
-    FROM: Extracts case-related data structures from original database operations.
+    """!
+    @brief Data Transfer Object for case information.
     """
     case_id: str
     case_path: Path
@@ -27,8 +30,8 @@ class CaseData:
 
 @dataclass
 class BeamData:
-    """
-    Data Transfer Object for beam information.
+    """!
+    @brief Data Transfer Object for beam information.
     """
     beam_id: str
     parent_case_id: str
@@ -40,9 +43,8 @@ class BeamData:
 
 @dataclass
 class GpuResource:
-    """
-    Data Transfer Object for GPU resource information.
-    FROM: Extracts GPU data structure from nvidia-smi parsing logic.
+    """!
+    @brief Data Transfer Object for GPU resource information.
     """
     uuid: str
     name: str
@@ -57,9 +59,8 @@ class GpuResource:
 
 @dataclass
 class WorkflowStepRecord:
-    """
-    Data Transfer Object for workflow step tracking.
-    FROM: Workflow step recording logic from original database handler.
+    """!
+    @brief Data Transfer Object for workflow step tracking.
     """
     case_id: str
     step: WorkflowStep
@@ -71,9 +72,8 @@ class WorkflowStepRecord:
 
 @dataclass
 class SystemStats:
-    """
-    Data Transfer Object for system statistics.
-    FROM: System monitoring data from original display handler.
+    """!
+    @brief Data Transfer Object for system statistics.
     """
     total_cases: int
     active_cases: int

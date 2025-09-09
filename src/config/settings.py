@@ -2,6 +2,13 @@
 # Target File: src/config/settings.py
 # Source Reference: src/config.py
 # =====================================================================================
+"""!
+@file settings.py
+@brief Manages application configuration settings.
+@details This module defines the configuration structure using dataclasses
+         and provides a `Settings` class to load configuration from
+         environment variables and a YAML file.
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,9 +18,8 @@ import yaml
 
 @dataclass
 class DatabaseConfig:
-    """
-    Configuration for database settings.
-    FROM: Database configuration from original config.py.
+    """!
+    @brief Configuration for database settings.
     """
     db_path: Path
     timeout: int = 30
@@ -26,9 +32,8 @@ class DatabaseConfig:
 
 @dataclass
 class ProcessingConfig:
-    """
-    Configuration for processing settings.
-    FROM: Processing configuration from original config.py.
+    """!
+    @brief Configuration for processing settings.
     """
     max_workers: int = 4
     case_timeout: int = 3600  # 1 hour
@@ -43,9 +48,8 @@ class ProcessingConfig:
 
 @dataclass
 class GpuConfig:
-    """
-    Configuration for GPU resource management.
-    FROM: GPU configuration from original config.py.
+    """!
+    @brief Configuration for GPU resource management.
     """
     monitor_interval: int = 30  # seconds
     allocation_timeout: int = 300  # 5 minutes
@@ -55,9 +59,8 @@ class GpuConfig:
 
 @dataclass
 class LoggingConfig:
-    """
-    Configuration for logging settings.
-    FROM: Logging configuration from original config.py.
+    """!
+    @brief Configuration for logging settings.
     """
     log_level: str = "INFO"
     log_dir: Path = Path("logs")
@@ -67,9 +70,8 @@ class LoggingConfig:
 
 @dataclass
 class UIConfig:
-    """
-    Configuration for UI display settings.
-    FROM: Display configuration from original config.py.
+    """!
+    @brief Configuration for UI display settings.
     """
     refresh_interval: int = 2  # seconds
     max_log_entries: int = 100
@@ -79,16 +81,16 @@ class UIConfig:
 
 @dataclass
 class HandlerConfig:
-    """
-    Configuration for local and remote command handlers.
+    """!
+    @brief Configuration for local and remote command handlers.
     """
     command_timeout: int = 300 # seconds
     ssh_timeout: int = 60 # seconds
 
 @dataclass
 class RetryPolicyConfig:
-    """
-    Configuration for retry policy settings.
+    """!
+    @brief Configuration for retry policy settings.
     """
     max_retries: int = 3
     initial_delay_seconds: int = 5
@@ -96,27 +98,24 @@ class RetryPolicyConfig:
     backoff_multiplier: float = 2.0
 
 class Settings:
-    """
-    Main configuration class that loads and manages all settings.
-    FROM: Configuration management from original config.py.
-    REFACTORING NOTES: Externalized all configuration to be injected via this class.
+    """!
+    @brief Main configuration class that loads and manages all settings.
+    @details This class loads settings from environment variables and a YAML file,
+             and provides methods to access the configuration values.
     """
     
     def __init__(self, config_path: Optional[Path] = None):
-        """
-        Initialize settings from environment variables and config file.
-        
-        Args:
-            config_path: Optional path to configuration file
+        """!
+        @brief Initialize settings from environment variables and config file.
+        @param config_path: Optional path to the configuration file.
         """
         self._load_from_env()
         if config_path and config_path.exists():
             self._load_from_file(config_path)
     
     def _load_from_env(self) -> None:
-        """
-        Load configuration from environment variables.
-        FROM: Environment configuration loading from original config.py.
+        """!
+        @brief Load configuration from environment variables.
         """
         # Database configuration
         self.database = DatabaseConfig(
@@ -169,12 +168,9 @@ class Settings:
         )
     
     def _load_from_file(self, config_path: Path) -> None:
-        """
-        Load configuration from YAML file.
-        FROM: File configuration loading from original config.py.
-        
-        Args:
-            config_path: Path to YAML configuration file
+        """!
+        @brief Load configuration from a YAML file.
+        @param config_path: Path to the YAML configuration file.
         """
         try:
             with open(config_path, 'r', encoding='utf-8') as f:
@@ -233,9 +229,9 @@ class Settings:
             self._yaml_config = {}
     
     def get_case_directories(self) -> Dict[str, Path]:
-        """
-        Get configured case directories.
-        FROM: Case directory configuration from original config.py.
+        """!
+        @brief Get configured case directories.
+        @return A dictionary of case directory paths.
         """
         if hasattr(self, '_yaml_config') and 'paths' in self._yaml_config:
             paths_config = self._yaml_config['paths']
@@ -257,9 +253,9 @@ class Settings:
         }
     
     def get_database_path(self) -> Path:
-        """
-        Get database path from YAML config.
-        FROM: Database path configuration from config.yaml.
+        """!
+        @brief Get the database path from the YAML config.
+        @return The path to the database file.
         """
         if hasattr(self, '_yaml_config') and 'paths' in self._yaml_config:
             paths_config = self._yaml_config['paths']
@@ -272,10 +268,9 @@ class Settings:
         return self.database.db_path
     
     def get_executables(self) -> Dict[str, str]:
-        """
-        Get executable paths from YAML config.
-        FROM: Executable paths configuration from config.yaml.
-        REFACTORING NOTES: Updated to handle new script-based naming convention.
+        """!
+        @brief Get executable paths from the YAML config.
+        @return A dictionary of executable paths.
         """
         if hasattr(self, '_yaml_config') and 'executables' in self._yaml_config:
             executables = self._yaml_config['executables']
@@ -293,9 +288,9 @@ class Settings:
         return {}
     
     def get_hpc_connection(self) -> Dict[str, Any]:
-        """
-        Get HPC connection configuration from YAML config.
-        FROM: HPC connection configuration from config.yaml.
+        """!
+        @brief Get HPC connection configuration from the YAML config.
+        @return A dictionary of HPC connection settings.
         """
         if hasattr(self, '_yaml_config') and 'hpc_connection' in self._yaml_config:
             return self._yaml_config['hpc_connection']
@@ -303,9 +298,9 @@ class Settings:
         return {}
     
     def get_hpc_paths(self) -> Dict[str, str]:
-        """
-        Get HPC paths from YAML config.
-        FROM: HPC paths configuration from config.yaml.
+        """!
+        @brief Get HPC paths from the YAML config.
+        @return A dictionary of HPC paths.
         """
         if hasattr(self, '_yaml_config') and 'paths' in self._yaml_config:
             return self._yaml_config['paths'].get('hpc', {})
@@ -313,9 +308,9 @@ class Settings:
         return {}
     
     def get_base_directory(self) -> str:
-        """
-        Get base directory from YAML config.
-        FROM: Base directory configuration from config.yaml.
+        """!
+        @brief Get the base directory from the YAML config.
+        @return The base directory path as a string.
         """
         if hasattr(self, '_yaml_config') and 'paths' in self._yaml_config:
             return self._yaml_config['paths'].get('base_directory', '')
@@ -323,9 +318,9 @@ class Settings:
         return ''
     
     def get_moqui_tps_parameters(self) -> Dict[str, Any]:
-        """
-        Get MOQUI TPS parameters from YAML config.
-        FROM: MOQUI TPS parameters configuration from config.yaml.
+        """!
+        @brief Get MOQUI TPS parameters from the YAML config.
+        @return A dictionary of MOQUI TPS parameters.
         """
         if hasattr(self, '_yaml_config') and 'moqui_tps_parameters' in self._yaml_config:
             return self._yaml_config['moqui_tps_parameters']
@@ -334,9 +329,9 @@ class Settings:
     
     @property
     def command_templates(self) -> Dict[str, str]:
-        """
-        Get command templates from YAML config.
-        FROM: Command templates configuration from config.yaml.
+        """!
+        @brief Get command templates from the YAML config.
+        @return A dictionary of command templates.
         """
         if hasattr(self, '_yaml_config') and 'command_templates' in self._yaml_config:
             return self._yaml_config['command_templates']

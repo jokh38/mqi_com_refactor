@@ -1,3 +1,7 @@
+"""!
+@file gpu_monitor.py
+@brief A long-running service that periodically fetches GPU resource data.
+"""
 import subprocess
 import csv
 import time
@@ -13,16 +17,12 @@ from src.handlers.remote_handler import RemoteHandler
 from src.repositories.gpu_repo import GpuRepository
 
 class GpuMonitor:
-    """
-    A long-running service that periodically fetches GPU resource data from a remote
-    host and updates a local repository.
-    
-    FROM: Extracts the `nvidia-smi` result parsing logic from 
-          `populate_gpu_resources_from_nvidia_smi` in original `database_handler.py`
-          and combines it with a threaded monitoring loop.
-    REFACTORING NOTES: This class is now a stateful service. It separates data
-                       acquisition (via RemoteHandler) and parsing from data
-                       persistence (via GpuRepository).
+    """!
+    @brief A long-running service that periodically fetches GPU resource data from a remote
+           host and updates a local repository.
+    @details This class is a stateful service that separates data
+             acquisition (via RemoteHandler) and parsing from data
+             persistence (via GpuRepository).
     """
     
     def __init__(self,
@@ -30,14 +30,12 @@ class GpuMonitor:
                  remote_handler: RemoteHandler,
                  gpu_repository: GpuRepository,
                  update_interval: int = 60):
-        """
-        Initialize the GpuMonitor service.
-        
-        Args:
-            logger: Logger for recording operations.
-            remote_handler: Handler for executing commands on the remote host.
-            gpu_repository: Repository for persisting GPU data.
-            update_interval: Interval in seconds between GPU data fetches.
+        """!
+        @brief Initialize the GpuMonitor service.
+        @param logger: Logger for recording operations.
+        @param remote_handler: Handler for executing commands on the remote host.
+        @param gpu_repository: Repository for persisting GPU data.
+        @param update_interval: Interval in seconds between GPU data fetches.
         """
         self.logger = logger
         self.remote_handler = remote_handler
@@ -48,7 +46,9 @@ class GpuMonitor:
         self._monitor_thread: Optional[threading.Thread] = None
 
     def start(self) -> None:
-        """Starts the GPU monitoring service in a background thread."""
+        """!
+        @brief Starts the GPU monitoring service in a background thread.
+        """
         if self._monitor_thread and self._monitor_thread.is_alive():
             self.logger.warning("GPU monitor is already running.")
             return
@@ -59,7 +59,9 @@ class GpuMonitor:
         self._monitor_thread.start()
 
     def stop(self) -> None:
-        """Stops the GPU monitoring service."""
+        """!
+        @brief Stops the GPU monitoring service.
+        """
         if not self._monitor_thread or not self._monitor_thread.is_alive():
             self.logger.warning("GPU monitor is not running.")
             return
@@ -72,7 +74,9 @@ class GpuMonitor:
             self.logger.error("GPU monitor thread did not shut down cleanly.")
 
     def _monitor_loop(self) -> None:
-        """The main monitoring loop that runs in a separate thread."""
+        """!
+        @brief The main monitoring loop that runs in a separate thread.
+        """
         self.logger.info("GPU monitor loop started.", {"update_interval": self.update_interval})
         while not self._shutdown_event.is_set():
             try:
@@ -86,7 +90,9 @@ class GpuMonitor:
         self.logger.info("GPU monitor loop has shut down.")
 
     def _fetch_and_update_gpus(self) -> None:
-        """Fetches GPU data from the remote host, parses it, and updates the repository."""
+        """!
+        @brief Fetches GPU data from the remote host, parses it, and updates the repository.
+        """
         self.logger.debug("Attempting to fetch remote GPU data.")
         
         try:
@@ -123,17 +129,11 @@ class GpuMonitor:
             })
     
     def _parse_nvidia_smi_output(self, raw_output: str) -> List[Dict[str, Any]]:
-        """
-        Parse the CSV output from nvidia-smi into structured data.
-        
-        FROM: The CSV parsing logic from original `populate_gpu_resources_from_nvidia_smi`.
-        REFACTORING NOTES: Extracted and cleaned up the parsing logic with better error handling.
-        
-        Args:
-            raw_output: Raw CSV output from nvidia-smi
-            
-        Returns:
-            List of dictionaries with parsed GPU data
+        """!
+        @brief Parse the CSV output from nvidia-smi into structured data.
+        @param raw_output: Raw CSV output from nvidia-smi.
+        @return A list of dictionaries with parsed GPU data.
+        @raises GpuResourceError: If the CSV output cannot be parsed.
         """
         gpu_data = []
         
@@ -187,7 +187,12 @@ class GpuMonitor:
         return gpu_data
     
     def _parse_memory_value(self, value: str) -> int:
-        """Parse memory value, handling 'N/A' and converting to MB."""
+        """!
+        @brief Parse a memory value, handling 'N/A' and converting to MB.
+        @param value: The string value to parse.
+        @return The memory value in MB as an integer.
+        @raises ValueError: If the value is invalid.
+        """
         value = value.strip()
         if value.lower() in ['n/a', '', 'null']:
             return 0
@@ -197,7 +202,12 @@ class GpuMonitor:
             raise ValueError(f"Invalid memory value: {value}")
     
     def _parse_temperature_value(self, value: str) -> int:
-        """Parse temperature value, handling 'N/A' cases."""
+        """!
+        @brief Parse a temperature value, handling 'N/A' cases.
+        @param value: The string value to parse.
+        @return The temperature value as an integer.
+        @raises ValueError: If the value is invalid.
+        """
         value = value.strip()
         if value.lower() in ['n/a', '', 'null']:
             return 0
@@ -207,7 +217,12 @@ class GpuMonitor:
             raise ValueError(f"Invalid temperature value: {value}")
     
     def _parse_utilization_value(self, value: str) -> int:
-        """Parse utilization percentage, handling 'N/A' cases."""
+        """!
+        @brief Parse a utilization percentage, handling 'N/A' cases.
+        @param value: The string value to parse.
+        @return The utilization percentage as an integer.
+        @raises ValueError: If the value is invalid.
+        """
         value = value.strip()
         if value.lower() in ['n/a', '', 'null']:
             return 0
@@ -217,11 +232,10 @@ class GpuMonitor:
             raise ValueError(f"Invalid utilization value: {value}")
     
     def _validate_gpu_data(self, gpu_info: Dict[str, Any]) -> None:
-        """
-        Validate parsed GPU data for consistency.
-        
-        Args:
-            gpu_info: Parsed GPU information dictionary
+        """!
+        @brief Validate parsed GPU data for consistency.
+        @param gpu_info: A dictionary of parsed GPU information.
+        @raises ValueError: If any of the data is invalid.
         """
         # Check UUID format
         if not gpu_info['uuid'] or len(gpu_info['uuid']) < 10:
@@ -247,11 +261,9 @@ class GpuMonitor:
             raise ValueError(f"Invalid utilization: {gpu_info['utilization']}%")
 
     def check_nvidia_smi_available(self) -> bool:
-        """
-        Check if nvidia-smi command is available and working.
-        
-        Returns:
-            True if nvidia-smi is available and working
+        """!
+        @brief Check if the nvidia-smi command is available and working.
+        @return True if nvidia-smi is available and working, False otherwise.
         """
         try:
             result = subprocess.run(

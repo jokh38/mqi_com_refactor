@@ -2,6 +2,10 @@
 # Target File: src/core/workflow_manager.py
 # Source Reference: src/workflow_manager.py, src/worker.py
 # =====================================================================================
+"""!
+@file workflow_manager.py
+@brief Manages and orchestrates the entire workflow for a case using a state pattern.
+"""
 
 from typing import Optional, Any, Dict
 from pathlib import Path
@@ -17,12 +21,10 @@ from src.domain.states import WorkflowState, InitialState
 
 
 class WorkflowManager:
-    """
-    Manages and orchestrates the entire workflow for a case according to the State pattern.
-    
-    FROM: Extracts core logic from the existing `workflow_manager.py` and `worker.py`.
-    RESPONSIBILITY: Responsible for executing each `State` and transitioning to the next,
-                   using the injected `repositories` and `handlers`.
+    """!
+    @brief Manages and orchestrates the entire workflow for a case according to the State pattern.
+    @details This class is responsible for executing each `State` and transitioning to the next,
+             using the injected `repositories` and `handlers`.
     """
 
     def __init__(
@@ -36,8 +38,16 @@ class WorkflowManager:
         id: str,
         path: Path,
     ):
-        """
-        Initializes the workflow manager with all required dependencies.
+        """!
+        @brief Initializes the workflow manager with all required dependencies.
+        @param case_repo: The case repository for database access.
+        @param gpu_repo: The GPU repository for database access.
+        @param local_handler: The handler for local command execution.
+        @param remote_handler: The handler for remote command execution.
+        @param tps_generator: The TPS generator service.
+        @param logger: The structured logger.
+        @param id: The unique identifier for the case or beam.
+        @param path: The path to the case or beam directory.
         """
         self.case_repo = case_repo
         self.gpu_repo = gpu_repo
@@ -51,14 +61,8 @@ class WorkflowManager:
         self.shared_context: Dict[str, Any] = {}
 
     def run_workflow(self) -> None:
-        """
-        Executes the complete workflow by managing state transitions.
-        
-        FROM: Migrated from the core logic in existing `workflow_manager.py` and `worker.py`.
-        REFACTORING NOTES: 
-        - Use State pattern for workflow execution
-        - Handle state transitions using the injected repositories and handlers
-        - Ensure proper error handling and logging throughout the workflow
+        """!
+        @brief Executes the complete workflow by managing state transitions.
         """
         self.logger.info(f"Starting workflow for: {self.id}")
 
@@ -76,8 +80,9 @@ class WorkflowManager:
         self.logger.info(f"Workflow finished for: {self.id}")
 
     def _transition_to_next_state(self, next_state: WorkflowState) -> None:
-        """
-        Handles transition from current state to the next state.
+        """!
+        @brief Handles the transition from the current state to the next state.
+        @param next_state: The next state in the workflow.
         """
         if next_state:
             self.logger.info(f"Transitioning from {self.current_state.get_state_name()} to {next_state.get_state_name()}")
@@ -87,8 +92,10 @@ class WorkflowManager:
         self.current_state = next_state
 
     def _handle_workflow_error(self, error: Exception, context: str) -> None:
-        """
-        Handles errors that occur during workflow execution.
+        """!
+        @brief Handles errors that occur during workflow execution.
+        @param error: The exception that occurred.
+        @param context: A string describing the context in which the error occurred.
         """
         self.logger.error(
             "Workflow error occurred",

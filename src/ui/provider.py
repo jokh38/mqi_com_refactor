@@ -2,6 +2,10 @@
 # Target File: src/ui/provider.py
 # Source Reference: src/display_handler.py
 # =====================================================================================
+"""!
+@file provider.py
+@brief Fetches and processes data required for the UI dashboard.
+"""
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -14,16 +18,17 @@ from src.domain.enums import CaseStatus, GpuStatus
 
 
 class DashboardDataProvider:
-    """
-    Fetches and processes data required for the UI dashboard from the repositories.
-    
-    FROM: Extracts data fetching logic from the `_refresh_*` methods in `display_handler.py`.
-    RESPONSIBILITY: Pure data fetching and processing without any UI rendering logic.
+    """!
+    @brief Fetches and processes data required for the UI dashboard from the repositories.
+    @details This class is responsible for pure data fetching and processing without any UI rendering logic.
     """
 
     def __init__(self, case_repo: CaseRepository, gpu_repo: GpuRepository, logger: StructuredLogger):
-        """
-        Initializes the provider with injected repositories.
+        """!
+        @brief Initializes the provider with injected repositories.
+        @param case_repo: The case repository.
+        @param gpu_repo: The GPU repository.
+        @param logger: The logger for recording operations.
         """
         self.case_repo = case_repo
         self.gpu_repo = gpu_repo
@@ -34,26 +39,29 @@ class DashboardDataProvider:
         self._active_cases: List[Dict[str, Any]] = []
 
     def get_system_stats(self) -> Dict[str, Any]:
-        """
-        Returns the latest system-level statistics.
+        """!
+        @brief Returns the latest system-level statistics.
+        @return A dictionary of system statistics.
         """
         return self._system_stats
 
     def get_gpu_data(self) -> List[Dict[str, Any]]:
-        """
-        Returns the latest GPU resource data.
+        """!
+        @brief Returns the latest GPU resource data.
+        @return A list of dictionaries, where each dictionary represents a GPU.
         """
         return self._gpu_data
 
     def get_active_cases_data(self) -> List[Dict[str, Any]]:
-        """
-        Returns the latest data for active cases.
+        """!
+        @brief Returns the latest data for active cases.
+        @return A list of dictionaries, where each dictionary represents an active case.
         """
         return self._active_cases
 
     def refresh_all_data(self) -> None:
-        """
-        Triggers a refresh of all data by fetching from repositories and processing it.
+        """!
+        @brief Triggers a refresh of all data by fetching from repositories and processing it.
         """
         try:
             self.logger.info("Refreshing all dashboard data")
@@ -79,8 +87,11 @@ class DashboardDataProvider:
 
 
     def _calculate_system_metrics(self, cases: List[CaseData], gpus: List[GpuResource]) -> Dict[str, Any]:
-        """
-        Calculates derived system metrics from raw repository data.
+        """!
+        @brief Calculates derived system metrics from raw repository data.
+        @param cases: A list of raw case data.
+        @param gpus: A list of raw GPU data.
+        @return A dictionary of system metrics.
         """
         total_gpus = len(gpus)
         available_gpus = sum(1 for gpu in gpus if gpu.status == GpuStatus.IDLE)
@@ -106,8 +117,10 @@ class DashboardDataProvider:
         return metrics
 
     def _process_case_data(self, raw_cases: List[CaseData]) -> List[Dict[str, Any]]:
-        """
-        Processes raw case data into a format suitable for display.
+        """!
+        @brief Processes raw case data into a format suitable for display.
+        @param raw_cases: A list of raw case data.
+        @return A list of processed case data.
         """
         processed_cases = []
         for case in raw_cases:
@@ -121,8 +134,10 @@ class DashboardDataProvider:
         return processed_cases
 
     def _process_gpu_data(self, raw_gpu_data: List[GpuResource]) -> List[Dict[str, Any]]:
-        """
-        Processes raw GPU data into a format suitable for display.
+        """!
+        @brief Processes raw GPU data into a format suitable for display.
+        @param raw_gpu_data: A list of raw GPU data.
+        @return A list of processed GPU data.
         """
         processed_gpus = []
         for gpu in raw_gpu_data:

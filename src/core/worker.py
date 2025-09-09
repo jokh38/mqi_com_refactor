@@ -2,6 +2,10 @@
 # Target File: src/core/worker.py
 # Source Reference: src/worker.py, src/main.py
 # =====================================================================================
+"""!
+@file worker.py
+@brief Main entry point for a worker process that handles a single beam.
+"""
 
 from pathlib import Path
 from typing import Any, Dict
@@ -21,16 +25,13 @@ from src.config.settings import Settings, DatabaseConfig, HandlerConfig, Logging
 
 
 def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
-    """
-    Acts as the "assembly line" that creates all dependency objects for a single beam
-    and injects them into the WorkflowManager to start the process.
-
-    This function is executed by a worker process for each beam.
-
-    Args:
-        beam_id: Unique identifier for the beam.
-        beam_path: Path to the beam directory.
-        settings: Settings object containing all configuration.
+    """!
+    @brief Acts as the "assembly line" that creates all dependency objects for a single beam
+           and injects them into the WorkflowManager to start the process.
+    @details This function is executed by a worker process for each beam.
+    @param beam_id: Unique identifier for the beam.
+    @param beam_path: Path to the beam directory.
+    @param settings: Settings object containing all configuration.
     """
     logger = StructuredLogger(f"worker_{beam_id}", config=settings.logging)
 
@@ -85,15 +86,11 @@ def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
 
 
 def _validate_beam_path(beam_path: Path, logger: StructuredLogger) -> None:
-    """
-    Performs 'Fail-Fast' validation of the beam path.
-
-    Args:
-        beam_path: Path to validate.
-        logger: Logger instance for error reporting.
-
-    Raises:
-        ValueError: If the path is invalid or inaccessible.
+    """!
+    @brief Performs 'Fail-Fast' validation of the beam path.
+    @param beam_path: Path to validate.
+    @param logger: Logger instance for error reporting.
+    @raises ValueError: If the path is invalid or inaccessible.
     """
     if not beam_path.exists():
         logger.error(f"Validation failed: Beam path does not exist: {beam_path}")

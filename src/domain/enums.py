@@ -2,13 +2,16 @@
 # Target File: src/domain/enums.py
 # Source Reference: src/states.py
 # =====================================================================================
+"""!
+@file enums.py
+@brief Defines enumerations for statuses and modes used throughout the application.
+"""
 
 from enum import Enum, auto
 
 class CaseStatus(Enum):
-    """
-    Enumeration of possible case statuses.
-    FROM: Migrated from status strings used throughout the original codebase.
+    """!
+    @brief Enumeration of possible case statuses.
     """
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
@@ -19,9 +22,9 @@ class CaseStatus(Enum):
     CANCELLED = "cancelled"
 
 class BeamStatus(Enum):
-    """
-    Enumeration of possible beam statuses.
-    Mirrors CaseStatus but is specific to a beam's lifecycle.
+    """!
+    @brief Enumeration of possible beam statuses.
+    @details Mirrors CaseStatus but is specific to a beam's lifecycle.
     """
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
@@ -34,10 +37,8 @@ class BeamStatus(Enum):
     FAILED = "failed"
 
 class WorkflowStep(Enum):
-    """
-    Enumeration of workflow steps.
-    FROM: Extracted from workflow logic in original codebase.
-    REFACTORING NOTES: Aligned with WORKFLOW_STEPS in constants.py
+    """!
+    @brief Enumeration of workflow steps.
     """
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
@@ -49,9 +50,8 @@ class WorkflowStep(Enum):
     FAILED = "failed"
 
 class GpuStatus(Enum):
-    """
-    Enumeration of GPU resource statuses.
-    FROM: Status values from nvidia-smi parsing logic.
+    """!
+    @brief Enumeration of GPU resource statuses.
     """
     IDLE = "idle"
     BUSY = "busy"
@@ -59,9 +59,8 @@ class GpuStatus(Enum):
     UNAVAILABLE = "unavailable"
 
 class ProcessingMode(Enum):
-    """
-    Enumeration of processing modes.
-    FROM: Configuration options in original codebase.
+    """!
+    @brief Enumeration of processing modes.
     """
     LOCAL = "local"
     REMOTE = "remote"
