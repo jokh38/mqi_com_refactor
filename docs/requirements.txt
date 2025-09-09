@@ -1,0 +1,4 @@
+# Documentation dependencies
+sphinx
+breathe
+sphinx-rtd-theme

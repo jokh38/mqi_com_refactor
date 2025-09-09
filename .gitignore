@@ -17,3 +17,7 @@ venv/
 # IDE files
 .idea/
 .vscode/
+
+# Documentation build artifacts
+docs/doxygen/
+docs/_build/
