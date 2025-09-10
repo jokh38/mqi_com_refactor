@@ -49,15 +49,20 @@ class DashboardProcess:
         
     def initialize_logging(self) -> None:
         """Initialize logging for the UI process."""
+        print(f"[DEBUG] initialize_logging() called")
         try:
+            print(f"[DEBUG] Creating StructuredLogger with config: {self.settings.logging}")
             self.logger = StructuredLogger(
                 name="ui_dashboard",
                 config=self.settings.logging
             )
+            print(f"[DEBUG] StructuredLogger created successfully")
             self.logger.info("Dashboard process starting", {
                 "database_path": self.database_path
             })
+            print(f"[DEBUG] Logging initialized successfully")
         except Exception as e:
+            print(f"[DEBUG] ERROR in initialize_logging: {e}")
             print(f"Failed to initialize logging: {e}")
             sys.exit(1)
     
@@ -67,41 +72,56 @@ class DashboardProcess:
         Returns:
             tuple[CaseRepository, GpuRepository]: A tuple containing the case and GPU repositories.
         """
+        print(f"[DEBUG] setup_database_components() called")
         try:
+            print(f"[DEBUG] Creating DatabaseConnection with db_path: {Path(self.database_path)}")
             db_connection = DatabaseConnection(
                 db_path=Path(self.database_path),
                 config=self.settings.database,
                 logger=self.logger
             )
+            print(f"[DEBUG] DatabaseConnection created successfully")
             
             # Create repositories
+            print(f"[DEBUG] Creating repositories...")
             case_repo = CaseRepository(db_connection, self.logger)
             gpu_repo = GpuRepository(db_connection, self.logger)
+            print(f"[DEBUG] Repositories created successfully")
             
             self.logger.info("Database components initialized successfully")
             return case_repo, gpu_repo
             
         except Exception as e:
+            print(f"[DEBUG] ERROR in setup_database_components: {e}")
             self.logger.error("Failed to setup database components", {"error": str(e)})
             sys.exit(1)
     
     def start_display(self) -> None:
         """Start the display manager."""
+        print(f"[DEBUG] start_display() called")
         try:
             # Setup database components
+            print(f"[DEBUG] Setting up database components...")
             case_repo, gpu_repo = self.setup_database_components()
+            print(f"[DEBUG] Database components setup complete")
             
             # Create data provider
+            print(f"[DEBUG] Creating DashboardDataProvider...")
             provider = DashboardDataProvider(case_repo, gpu_repo, self.logger)
+            print(f"[DEBUG] DashboardDataProvider created successfully")
             
             # Create and start display manager
+            print(f"[DEBUG] Creating DisplayManager...")
             self.display_manager = DisplayManager(provider, self.logger)
+            print(f"[DEBUG] Starting DisplayManager...")
             self.display_manager.start()
+            print(f"[DEBUG] DisplayManager started successfully")
             
             self.running = True
             self.logger.info("Dashboard display started successfully")
             
         except Exception as e:
+            print(f"[DEBUG] ERROR in start_display: {e}")
             self.logger.error("Failed to start display", {"error": str(e)})
             sys.exit(1)
     
@@ -183,12 +203,6 @@ def main() -> NoReturn:
             config_path=args.config
         )
         setup_signal_handlers(dashboard)
-
-        print(f"Starting MQI Dashboard UI (PID: {os.getpid()})...")
-        print(f"Database: {args.database_path}")
-        if args.config:
-            print(f"Config: {args.config}")
-        print("Press Ctrl+C to stop")
 
         dashboard.run()
 

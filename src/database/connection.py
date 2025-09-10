@@ -31,6 +31,7 @@ class DatabaseConnection:
             config (DatabaseConfig): Database configuration settings.
             logger (StructuredLogger): Logger for recording database events.
         """
+        print(f"[DEBUG] DatabaseConnection.__init__() called with db_path: {db_path}")
         self.db_path = db_path
         self.config = config
         self.logger = logger
@@ -38,9 +39,12 @@ class DatabaseConnection:
         self._lock = threading.RLock()
 
         # Create database directory if it doesn't exist
+        print(f"[DEBUG] Creating database directory: {db_path.parent}")
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[DEBUG] Database directory created/verified")
 
         # Initialize connection first, then schema
+        print(f"[DEBUG] About to call _connect()")
         self._connect()
 
     def _connect(self) -> None:
@@ -49,16 +53,24 @@ class DatabaseConnection:
         Raises:
             DatabaseError: If the connection fails.
         """
+        print(f"[DEBUG] DatabaseConnection._connect() called with db_path: {self.db_path}")
+        print(f"[DEBUG] Database path exists: {self.db_path.exists()}")
+        print(f"[DEBUG] Database config: timeout={self.config.timeout}, journal_mode={self.config.journal_mode}")
+        
         try:
+            print(f"[DEBUG] Attempting to connect to SQLite database...")
             self._conn = sqlite3.connect(
                 str(self.db_path), timeout=self.config.timeout, check_same_thread=False
             )
+            print(f"[DEBUG] SQLite connection established successfully")
             self._conn.row_factory = sqlite3.Row
 
             # Apply configuration settings
+            print(f"[DEBUG] Applying PRAGMA settings...")
             self._conn.execute(f"PRAGMA journal_mode = {self.config.journal_mode}")
             self._conn.execute(f"PRAGMA synchronous = {self.config.synchronous}")
             self._conn.execute(f"PRAGMA cache_size = {self.config.cache_size}")
+            print(f"[DEBUG] PRAGMA settings applied successfully")
 
             self.logger.info(
                 "Database connection established",
@@ -68,13 +80,18 @@ class DatabaseConnection:
                     "synchronous": self.config.synchronous,
                 },
             )
+            print(f"[DEBUG] Database connection fully established and configured")
 
         except sqlite3.Error as e:
+            print(f"[DEBUG] ERROR in _connect: SQLite error: {e}")
             self.logger.error(
                 "Failed to connect to database",
                 {"db_path": str(self.db_path), "error": str(e)},
             )
             raise DatabaseError(f"Failed to connect to database: {e}")
+        except Exception as e:
+            print(f"[DEBUG] ERROR in _connect: Unexpected error: {e}")
+            raise
 
     def __enter__(self):
         """Enables use of the 'with' statement for resource management."""

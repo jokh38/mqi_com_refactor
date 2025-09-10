@@ -38,7 +38,8 @@ class DisplayManager:
         """
         self.provider = provider
         self.logger = logger
-        self.console = Console()
+        # Force Rich to treat this as a terminal even if it doesn't detect it as one
+        self.console = Console(force_terminal=True, width=120, height=30)
         self.layout = self._create_layout()
         self.live: Optional[Live] = None
         self.running = False
@@ -68,8 +69,20 @@ class DisplayManager:
             return
 
         self.running = True
-        self.live = Live(self.layout, console=self.console, screen=True, auto_refresh=False)
-        self.live.start()
+        
+        try:
+            # Try with screen=True first (alternate screen mode)
+            self.live = Live(self.layout, console=self.console, screen=True, auto_refresh=False)
+            self.live.start()
+        except Exception as e:
+            try:
+                # Fallback: try without alternate screen mode
+                self.live = Live(self.layout, console=self.console, screen=False, auto_refresh=False)
+                self.live.start()
+            except Exception as e2:
+                self.logger.error("Failed to start Live display", {"error": str(e2)})
+                # As a last resort, let's try a simple print-based approach
+                self.live = None
 
         self._update_thread = threading.Thread(target=self._update_loop, daemon=True)
         self._update_thread.start()
@@ -101,28 +114,46 @@ class DisplayManager:
 
     def update_display(self) -> None:
         """Updates the display with fresh data from the provider."""
-        # Header
-        header_text = Text(f"MQI Communicator Dashboard - Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", justify="center")
-        self.layout["header"].update(Panel(header_text, style="bold blue"))
+        try:
+            # Header
+            header_text = Text(f"MQI Communicator Dashboard - Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", justify="center")
+            self.layout["header"].update(Panel(header_text, style="bold blue"))
 
-        # System Stats
-        stats_data = self.provider.get_system_stats()
-        self.layout["system_stats"].update(self._create_system_stats_panel(stats_data))
+            # System Stats
+            stats_data = self.provider.get_system_stats()
+            self.layout["system_stats"].update(self._create_system_stats_panel(stats_data))
 
-        # GPU Resources
-        gpu_data = self.provider.get_gpu_data()
-        self.layout["gpu_resources"].update(self._create_gpu_panel(gpu_data))
+            # GPU Resources
+            gpu_data = self.provider.get_gpu_data()
+            self.layout["gpu_resources"].update(self._create_gpu_panel(gpu_data))
 
-        # Active Cases
-        cases_data = self.provider.get_active_cases_data()
-        self.layout["right"].update(self._create_cases_panel(cases_data))
-        
-        # Footer
-        footer_text = Text(f"Watching for new cases... | Total Active Cases: {stats_data.get('total_cases', 0)} | Available GPUs: {stats_data.get('available_gpus', 0)}/{stats_data.get('total_gpus', 0)}", justify="left")
-        self.layout["footer"].update(Panel(footer_text, style="white"))
-        
-        if self.live:
-            self.live.refresh()
+            # Active Cases
+            cases_data = self.provider.get_active_cases_data()
+            self.layout["right"].update(self._create_cases_panel(cases_data))
+            
+            # Footer
+            footer_text = Text(f"Watching for new cases... | Total Active Cases: {stats_data.get('total_cases', 0)} | Available GPUs: {stats_data.get('available_gpus', 0)}/{stats_data.get('total_gpus', 0)}", justify="left")
+            self.layout["footer"].update(Panel(footer_text, style="white"))
+            
+            if self.live:
+                self.live.refresh()
+            else:
+                # Fallback: simple print-based display
+                print("\n" + "="*60)
+                print(f"MQI DASHBOARD - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                print("="*60)
+                print(f"Total Cases: {stats_data.get('total_cases', 0)}")
+                print(f"Pending: {stats_data.get('pending', 0)}, Processing: {stats_data.get('processing', 0)}")
+                print(f"GPUs: {len(gpu_data)} available")
+                print(f"Active Cases: {len(cases_data)}")
+                if cases_data:
+                    print("\nActive Cases:")
+                    for case in cases_data:
+                        print(f"  - {case['case_id']}: {case['status']} ({case['progress']:.1f}%)")
+                print("="*60)
+        except Exception as e:
+            self.logger.error("Error updating display", {"error": str(e)})
+            raise
 
     def _create_system_stats_panel(self, stats_data: dict) -> Panel:
         """Creates a panel for system statistics.

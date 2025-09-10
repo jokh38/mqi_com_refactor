@@ -72,27 +72,36 @@ class UIProcessManager:
             
             # Ensure log directory exists
             self.log_dir.mkdir(parents=True, exist_ok=True)
-            stdout_log_path = self.log_dir / "dashboard_stdout.log"
             stderr_log_path = self.log_dir / "dashboard_stderr.log"
 
-            # Open log files to capture the subprocess output
-            self._stdout_log_file = open(stdout_log_path, "w", encoding='utf-8')
+            # Only open stderr log file since stdout goes to console
             self._stderr_log_file = open(stderr_log_path, "w", encoding='utf-8')
+            self._stdout_log_file = None  # No longer needed
 
             # Start the UI process
+            if self.logger:
+                self.logger.info("About to start UI subprocess", {
+                    "command": ' '.join(command),
+                    "cwd": str(self.project_root),
+                    "creation_flags": creation_flags
+                })
+            
+            # For UI dashboard, we want output to go to the console window, not log files
+            # Only redirect stderr to log file to capture errors
             self._process = subprocess.Popen(
                 command,
                 creationflags=creation_flags,
                 cwd=self.project_root,
-                stdout=self._stdout_log_file,
-                stderr=self._stderr_log_file
+                stdout=None,  # Let stdout go to the console window
+                stderr=self._stderr_log_file  # Keep stderr logging for error capture
             )
             
             # Give the process a moment to start
-            time.sleep(0.5)
+            time.sleep(2.0)  # Increased wait time for debugging
             
             # Check if process is still running
-            if self._process.poll() is None:
+            poll_result = self._process.poll()
+            if poll_result is None:
                 self._is_running = True
                 if self.logger:
                     self.logger.info("UI process started successfully", {
@@ -100,12 +109,25 @@ class UIProcessManager:
                     })
                 return True
             else:
-                # Process failed to start
+                # Process failed to start - read error logs immediately
+                self._stderr_log_file.flush()
+                self._stdout_log_file.flush()
+                
+                # Read the error from stderr log
+                try:
+                    with open(stderr_log_path, 'r', encoding='utf-8') as f:
+                        stderr_content = f.read()
+                    # stdout_log_file is no longer used since stdout goes to console
+                    stdout_content = "Stdout redirected to console window"
+                except Exception:
+                    stderr_content = "Could not read stderr log"
+                    stdout_content = "Stdout redirected to console window"
+                
                 if self.logger:
-                    self.logger.error("UI process failed to start. Check dashboard_stderr.log for details.", {
-                        "stdout_log": str(stdout_log_path),
+                    self.logger.error("UI process failed to start. Check dashboard logs for details.", {
                         "stderr_log": str(stderr_log_path),
-                        "return_code": self._process.returncode
+                        "return_code": poll_result,
+                        "stderr_content": stderr_content[:500]  # First 500 chars
                     })
                 self._process = None
                 return False
@@ -126,10 +148,6 @@ class UIProcessManager:
             bool: True if the process stopped successfully, False otherwise.
         """
         # Always try to close file handles, regardless of process state.
-        if self._stdout_log_file:
-            try: self._stdout_log_file.close()
-            except Exception: pass
-            self._stdout_log_file = None
         if self._stderr_log_file:
             try: self._stderr_log_file.close()
             except Exception: pass
