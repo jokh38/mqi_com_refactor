@@ -7,7 +7,7 @@
 from typing import Optional
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
 from rich.layout import Layout
@@ -28,13 +28,14 @@ class DisplayManager:
     This class is responsible for pure UI rendering without any data fetching or business logic.
     """
 
-    def __init__(self, provider: DashboardDataProvider, logger: StructuredLogger, refresh_rate: int = 2):
+    def __init__(self, provider: DashboardDataProvider, logger: StructuredLogger, refresh_rate: int = 2, timezone_hours: int = 9):
         """Initializes the display manager with an injected data provider.
 
         Args:
             provider (DashboardDataProvider): The data provider for the dashboard.
             logger (StructuredLogger): The logger for recording operations.
             refresh_rate (int, optional): The refresh rate for the display in seconds. Defaults to 2.
+            timezone_hours (int, optional): The timezone hours offset from UTC (Seoul = 9). Defaults to 9.
         """
         self.provider = provider
         self.logger = logger
@@ -45,6 +46,7 @@ class DisplayManager:
         self.running = False
         self._update_thread: Optional[threading.Thread] = None
         self._refresh_rate = refresh_rate
+        self._local_tz = timezone(timedelta(hours=timezone_hours))
 
     def _create_layout(self) -> Layout:
         """Creates and returns the main layout structure for the dashboard.
@@ -116,7 +118,8 @@ class DisplayManager:
         """Updates the display with fresh data from the provider."""
         try:
             # Header
-            header_text = Text(f"MQI Communicator Dashboard - Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", justify="center")
+            current_time = datetime.now(self._local_tz).strftime('%Y-%m-%d %H:%M:%S KST')
+            header_text = Text(f"MQI Communicator Dashboard - Last Updated: {current_time}", justify="center")
             self.layout["header"].update(Panel(header_text, style="bold blue"))
 
             # System Stats
@@ -140,7 +143,8 @@ class DisplayManager:
             else:
                 # Fallback: simple print-based display
                 print("\n" + "="*60)
-                print(f"MQI DASHBOARD - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                current_time = datetime.now(self._local_tz).strftime('%Y-%m-%d %H:%M:%S KST')
+                print(f"MQI DASHBOARD - {current_time}")
                 print("="*60)
                 print(f"Total Cases: {stats_data.get('total_cases', 0)}")
                 print(f"Pending: {stats_data.get('pending', 0)}, Processing: {stats_data.get('processing', 0)}")

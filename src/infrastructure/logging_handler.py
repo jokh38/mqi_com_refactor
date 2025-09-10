@@ -8,7 +8,7 @@ import logging
 import json
 import sys
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 from logging.handlers import RotatingFileHandler
 
@@ -69,11 +69,14 @@ class StructuredLogger:
         Returns:
             logging.Formatter: A logging.Formatter instance that formats logs as JSON.
         """
+        config = self.config  # Capture config for inner class
         
         class JsonFormatter(logging.Formatter):
             def format(self, record):
+                # Create timezone object for configured timezone (Seoul: UTC+9)
+                local_tz = timezone(timedelta(hours=config.timezone_hours))
                 log_data = {
-                    'timestamp': datetime.now(timezone.utc).isoformat(),
+                    'timestamp': datetime.now(local_tz).isoformat(),
                     'logger': record.name,
                     'level': record.levelname,                    
                     'message': record.getMessage(),

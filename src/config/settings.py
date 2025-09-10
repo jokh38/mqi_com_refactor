@@ -57,6 +57,7 @@ class LoggingConfig:
     max_file_size: int = 10  # MB
     backup_count: int = 5
     structured_logging: bool = True
+    timezone_hours: int = 9  # Seoul timezone (UTC+9)
 
 
 @dataclass
@@ -132,7 +133,8 @@ class Settings:
             log_dir=Path(os.getenv("MQI_LOG_DIR", "logs")),
             max_file_size=int(os.getenv("MQI_LOG_MAX_SIZE", "10")),
             backup_count=int(os.getenv("MQI_LOG_BACKUP_COUNT", "5")),
-            structured_logging=os.getenv("MQI_STRUCTURED_LOGGING", "true").lower() == "true"
+            structured_logging=os.getenv("MQI_STRUCTURED_LOGGING", "true").lower() == "true",
+            timezone_hours=int(os.getenv("MQI_TIMEZONE_HOURS", "9"))
         )
         
         # UI configuration
@@ -221,6 +223,8 @@ class Settings:
                     'backup_count', self.logging.backup_count)
                 self.logging.structured_logging = logging_config.get(
                     'structured_logging', self.logging.structured_logging)
+                self.logging.timezone_hours = logging_config.get(
+                    'tz_hours', self.logging.timezone_hours)
         except Exception as e:
             # Log error but continue with defaults
             print(f"Warning: Could not load config file {config_path}: {e}")

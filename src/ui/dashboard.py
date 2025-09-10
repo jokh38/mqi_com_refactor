@@ -112,7 +112,12 @@ class DashboardProcess:
             
             # Create and start display manager
             print(f"[DEBUG] Creating DisplayManager...")
-            self.display_manager = DisplayManager(provider, self.logger)
+            self.display_manager = DisplayManager(
+                provider, 
+                self.logger,
+                refresh_rate=self.settings.ui.refresh_interval,
+                timezone_hours=self.settings.logging.timezone_hours
+            )
             print(f"[DEBUG] Starting DisplayManager...")
             self.display_manager.start()
             print(f"[DEBUG] DisplayManager started successfully")

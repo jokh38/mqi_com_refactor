@@ -1,5 +1,5 @@
 """Manages all CRUD operations for the 'gpu_resources' table."""
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from src.database.connection import DatabaseConnection
