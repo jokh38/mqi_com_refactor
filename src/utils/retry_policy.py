@@ -31,6 +31,7 @@ class RetryPolicy:
         max_attempts: int = 3,
         base_delay: float = 1.0,
         max_delay: float = 60.0,
+        backoff_multiplier: float = 2.0,
         strategy: RetryStrategy = RetryStrategy.EXPONENTIAL_BACKOFF,
         retryable_exceptions: Optional[List[Type[Exception]]] = None,
         logger: Optional[StructuredLogger] = None
@@ -41,6 +42,7 @@ class RetryPolicy:
             max_attempts (int, optional): The maximum number of retry attempts. Defaults to 3.
             base_delay (float, optional): The base delay between retries in seconds. Defaults to 1.0.
             max_delay (float, optional): The maximum delay between retries in seconds. Defaults to 60.0.
+            backoff_multiplier (float, optional): The multiplier for exponential backoff. Defaults to 2.0.
             strategy (RetryStrategy, optional): The retry strategy to use. Defaults to RetryStrategy.EXPONENTIAL_BACKOFF.
             retryable_exceptions (Optional[List[Type[Exception]]], optional): A list of exception types that should trigger retries. Defaults to None.
             logger (Optional[StructuredLogger], optional): A logger instance for retry events. Defaults to None.
@@ -48,6 +50,7 @@ class RetryPolicy:
         self.max_attempts = max_attempts
         self.base_delay = base_delay
         self.max_delay = max_delay
+        self.backoff_multiplier = backoff_multiplier
         self.strategy = strategy
         self.retryable_exceptions = retryable_exceptions or [RetryableError]
         self.logger = logger
@@ -111,7 +114,7 @@ class RetryPolicy:
         if self.strategy == RetryStrategy.FIXED_DELAY:
             delay = self.base_delay
         elif self.strategy == RetryStrategy.EXPONENTIAL_BACKOFF:
-            delay = self.base_delay * (2 ** (attempt - 1))
+            delay = self.base_delay * (self.backoff_multiplier ** (attempt - 1))
         elif self.strategy == RetryStrategy.LINEAR_BACKOFF:
             delay = self.base_delay * attempt
         else:
@@ -145,6 +148,7 @@ class RetryPolicy:
 def retry(
     max_attempts: int = 3,
     base_delay: float = 1.0,
+    backoff_multiplier: float = 2.0,
     strategy: RetryStrategy = RetryStrategy.EXPONENTIAL_BACKOFF,
     retryable_exceptions: Optional[List[Type[Exception]]] = None
 ):
@@ -153,6 +157,7 @@ def retry(
     Args:
         max_attempts (int, optional): The maximum number of retry attempts. Defaults to 3.
         base_delay (float, optional): The base delay between retries in seconds. Defaults to 1.0.
+        backoff_multiplier (float, optional): The multiplier for exponential backoff. Defaults to 2.0.
         strategy (RetryStrategy, optional): The retry strategy to use. Defaults to RetryStrategy.EXPONENTIAL_BACKOFF.
         retryable_exceptions (Optional[List[Type[Exception]]], optional): A list of exception types that should trigger retries. Defaults to None.
     """
@@ -162,6 +167,7 @@ def retry(
             policy = RetryPolicy(
                 max_attempts=max_attempts,
                 base_delay=base_delay,
+                backoff_multiplier=backoff_multiplier,
                 strategy=strategy,
                 retryable_exceptions=retryable_exceptions
             )

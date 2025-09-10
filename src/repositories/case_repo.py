@@ -499,3 +499,58 @@ class CaseRepository(BaseRepository):
             )
 
         return cases
+
+    def create_case_with_beams(self, case_id: str, case_path: str, beam_jobs: List[Dict[str, Any]]) -> None:
+        """Atomically creates a case and its associated beam records.
+
+        Args:
+            case_id (str): The unique identifier for the case.
+            case_path (str): The path to the case directory.
+            beam_jobs (List[Dict[str, Any]]): A list of dictionaries, each containing 'beam_id' and 'beam_path'.
+        """
+        self._log_operation("create_case_with_beams", case_id=case_id, num_beams=len(beam_jobs))
+        with self.db.transaction() as conn:
+            # Add case, or do nothing if it already exists
+            conn.execute(
+                """
+                INSERT INTO cases (case_id, case_path, status, progress, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(case_id) DO NOTHING
+                """,
+                (case_id, case_path, CaseStatus.PROCESSING.value, 0.0)
+            )
+
+            # Prepare beam records for insertion
+            beam_records = [
+                (
+                    job["beam_id"],
+                    case_id,
+                    str(job["beam_path"]),
+                    BeamStatus.PENDING.value,
+                )
+                for job in beam_jobs
+            ]
+
+            # Add beams, or do nothing if they already exist
+            conn.executemany(
+                """
+                INSERT INTO beams (beam_id, parent_case_id, beam_path, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(beam_id) DO NOTHING
+                """,
+                beam_records
+            )
+        self.logger.info("Case with beams created successfully", {"case_id": case_id, "num_beams": len(beam_jobs)})
+
+    def update_beams_status_by_case_id(self, case_id: str, status: str) -> None:
+        """Updates the status for all beams associated with a given case.
+
+        Args:
+            case_id (str): The parent case identifier.
+            status (str): The new status for the beams (e.g., "CSV_INTERPRETING", "UPLOADING").
+        """
+        self._log_operation("update_beams_status_by_case_id", case_id=case_id, status=status)
+        beam_status_value = BeamStatus[status.upper()].value
+        query = "UPDATE beams SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE parent_case_id = ?"
+        self._execute_query(query, (beam_status_value, case_id))
+        self.logger.info("Bulk updated beam statuses for case", {"case_id": case_id, "new_status": beam_status_value})

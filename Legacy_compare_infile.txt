@@ -26,10 +26,10 @@ for file_name in required_files:
 
 
 
-2. Preprocessing Stage
-- In the PreprocessingState class, input.mqi is used as input for a local process called mqi_interpreter.
+2. CSV Interpreting Stage
+- In the CsvInterpretingState class, input.mqi is used as input for a local process called mqi_interpreter.
 - This process reads input.mqi and generates a preprocessed.json output file.
-# src/domain/states.py - PreprocessingState class
+# src/domain/states.py - CsvInterpretingState class
 input_file = context.case_path / "input.mqi"
 output_file = context.case_path / "preprocessed.json"
 result = context.local_handler.run_mqi_interpreter(
@@ -54,5 +54,5 @@ files_to_upload = [
 
 ✅ Conclusion
 - The input.mqi file contains essential initial settings and parameters for case processing.
-- It is used across multiple workflow stages: validation, preprocessing, and HPC upload.
+- It is used across multiple workflow stages: validation, csv interpreting, and HPC upload.
 - Without this file, the entire process cannot begin

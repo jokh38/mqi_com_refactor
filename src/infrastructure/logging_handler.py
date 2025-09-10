@@ -74,8 +74,8 @@ class StructuredLogger:
             def format(self, record):
                 log_data = {
                     'timestamp': datetime.now(timezone.utc).isoformat(),
-                    'level': record.levelname,
                     'logger': record.name,
+                    'level': record.levelname,                    
                     'message': record.getMessage(),
                     'module': record.module,
                     'function': record.funcName,

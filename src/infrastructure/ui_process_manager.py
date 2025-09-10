@@ -23,7 +23,11 @@ class UIProcessManager:
     with proper console window handling on Windows systems.
     """
     
-    def __init__(self, database_path: str, config: Settings, logger: StructuredLogger):
+    def __init__(self, 
+                 database_path: str, 
+                 config_path: Optional[Path], 
+                 config: Settings, 
+                 logger: StructuredLogger):
         """Initializes the UIProcessManager.
 
         Args:
@@ -32,6 +36,7 @@ class UIProcessManager:
             logger (StructuredLogger): A logger instance for status messages.
         """
         self.database_path = database_path
+        self.config_path = config_path
         self.config = config
         self.logger = logger
         self.project_root = Path(__file__).parent.parent.parent
@@ -202,11 +207,14 @@ class UIProcessManager:
         Returns:
             list[str]: A list of command arguments.
         """
-        return [
+        command = [
             sys.executable,
             "-m", "src.ui.dashboard",
             self.database_path
         ]
+        if self.config_path:
+            command.extend(["--config", str(self.config_path)])
+        return command
     
     def _get_process_creation_flags(self) -> int:
         """Gets the appropriate process creation flags based on the platform.

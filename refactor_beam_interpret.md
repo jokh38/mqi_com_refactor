@@ -8,7 +8,7 @@ To modify the preprocessing workflow to correctly interpret each individual "bea
 
 ## 2. Analysis of Current Implementation
 
-The current implementation is incorrect because the `PreprocessingState` in `src/domain/states.py` invokes the `mqi_interpreter` only once, passing the top-level `case_path` as the primary argument. The logic in `src/handlers/local_handler.py` confirms this, as it constructs a single command:
+The current implementation is incorrect because the `CsvInterpretingState` in `src/domain/states.py` invokes the `mqi_interpreter` only once, passing the top-level `case_path` as the primary argument. The logic in `src/handlers/local_handler.py` confirms this, as it constructs a single command:
 
 ```python
 # From local_handler.py
@@ -25,7 +25,7 @@ The core business logic for the workflow resides in the state machine. Therefore
 
 ### **Target File:** `src/domain/states.py`
 
-### **Target State:** `PreprocessingState`
+### **Target State:** `CsvInterpretingState`
 
 The `execute` method of this class will be completely overhauled.
 
@@ -63,4 +63,5 @@ The `execute` method of this class will be completely overhauled.
 ## 4. Impact on Other Components
 
 -   **`src/handlers/local_handler.py`**: **No changes required.** The `run_mqi_interpreter` method is already generic enough to accept a path and execute the interpreter. By modifying the *caller* (`PreprocessingState`), we preserve the handler's role as a simple execution layer.
+-   **`src/handlers/local_handler.py`**: **No changes required.** The `run_mqi_interpreter` method is already generic enough to accept a path and execute the interpreter. By modifying the *caller* (`CsvInterpretingState`), we preserve the handler's role as a simple execution layer.
 -   **`config/config.yaml`**: **No changes required.** The paths and executables are configured correctly.

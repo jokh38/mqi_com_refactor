@@ -10,7 +10,7 @@ from enum import Enum
 class CaseStatus(Enum):
     """Enumeration of possible case statuses."""
     PENDING = "pending"
-    PREPROCESSING = "preprocessing"
+    CSV_INTERPRETING = "csv_interpreting"
     PROCESSING = "processing"
     POSTPROCESSING = "postprocessing"
     COMPLETED = "completed"
@@ -24,8 +24,9 @@ class BeamStatus(Enum):
     Mirrors CaseStatus but is specific to a beam's lifecycle.
     """
     PENDING = "pending"
-    PREPROCESSING = "preprocessing"
+    CSV_INTERPRETING = "csv_interpreting"
     UPLOADING = "uploading"
+    TPS_GENERATION = "tps_generation"
     HPC_QUEUED = "hpc_queued"
     HPC_RUNNING = "hpc_running"
     DOWNLOADING = "downloading"
@@ -37,8 +38,9 @@ class BeamStatus(Enum):
 class WorkflowStep(Enum):
     """Enumeration of workflow steps."""
     PENDING = "pending"
-    PREPROCESSING = "preprocessing"
+    CSV_INTERPRETING = "csv_interpreting"
     TPS_GENERATION = "tps_generation"
+    UPLOADING = "uploading"
     HPC_SUBMISSION = "hpc_submission"
     SIMULATION_RUNNING = "simulation_running"
     POSTPROCESSING = "postprocessing"

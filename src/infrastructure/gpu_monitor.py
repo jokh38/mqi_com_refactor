@@ -8,7 +8,6 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from src.infrastructure.logging_handler import StructuredLogger
-from src.config.constants import NVIDIA_SMI_QUERY_COMMAND
 from src.domain.errors import GpuResourceError
 from src.handlers.remote_handler import RemoteHandler
 from src.repositories.gpu_repo import GpuRepository
@@ -26,6 +25,7 @@ class GpuMonitor:
                  logger: StructuredLogger,
                  remote_handler: RemoteHandler,
                  gpu_repository: GpuRepository,
+                 command: str,
                  update_interval: int = 60):
         """Initialize the GpuMonitor service.
 
@@ -33,11 +33,13 @@ class GpuMonitor:
             logger (StructuredLogger): Logger for recording operations.
             remote_handler (RemoteHandler): Handler for executing commands on the remote host.
             gpu_repository (GpuRepository): Repository for persisting GPU data.
+            command (str): The nvidia-smi command to execute for fetching GPU data.
             update_interval (int): Interval in seconds between GPU data fetches.
         """
         self.logger = logger
         self.remote_handler = remote_handler
         self.gpu_repository = gpu_repository
+        self.command = command
         self.update_interval = update_interval
 
         self._shutdown_event = threading.Event()
@@ -89,7 +91,7 @@ class GpuMonitor:
             # Execute nvidia-smi command remotely
             result = self.remote_handler.execute_remote_command(
                 context_id="gpu_monitoring", # A generic ID for this operation
-                command=NVIDIA_SMI_QUERY_COMMAND
+                command=self.command
             )
 
             if not result.success:
@@ -150,7 +152,7 @@ class GpuMonitor:
                     # Parse and validate data
                     gpu_info = {
                         'uuid': row[0].strip(),
-                        'name': row[1].strip(),
+                        'name': self._parse_gpu_name(row[1]),
                         'memory_total': self._parse_memory_value(row[2]),
                         'memory_used': self._parse_memory_value(row[3]),
                         'memory_free': self._parse_memory_value(row[4]),
@@ -181,6 +183,13 @@ class GpuMonitor:
         
         return gpu_data
     
+    def _parse_gpu_name(self, value: str) -> str:
+        """Parses the GPU name, removing the 'NVIDIA ' prefix if it exists."""
+        name = value.strip()
+        if name.startswith("NVIDIA "):
+            return name[len("NVIDIA "):]
+        return name
+
     def _parse_memory_value(self, value: str) -> int:
         """Parse a memory value, handling 'N/A' and converting to MB.
 

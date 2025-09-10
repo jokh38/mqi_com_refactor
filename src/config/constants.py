@@ -44,8 +44,9 @@ PUEUE_ADD_COMMAND_TEMPLATE = "pueue add --group gpu{gpu_id} '{command}'"
 # Fixed workflow step identifiers (referenced in domain/states.py)
 WORKFLOW_STEPS = [
     "PENDING",
-    "PREPROCESSING",
+    "CSV_INTERPRETING",
     "TPS_GENERATION",
+    "UPLOADING",
     "HPC_SUBMISSION",
     "SIMULATION_RUNNING",
     "POSTPROCESSING",

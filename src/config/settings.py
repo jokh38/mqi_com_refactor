@@ -34,14 +34,9 @@ class ProcessingConfig:
     """Configuration for processing settings."""
     max_workers: int = 4
     case_timeout: int = 3600  # 1 hour
-    retry_attempts: int = 3
-    retry_delay: int = 60  # 1 minute
     scan_interval_seconds: int = 60
     polling_interval_seconds: int = 300
     local_execution_timeout_seconds: int = 300
-    initial_delay_seconds: int = 5
-    max_delay_seconds: int = 60
-    backoff_multiplier: float = 2.0
 
 
 @dataclass
@@ -121,8 +116,6 @@ class Settings:
         self.processing = ProcessingConfig(
             max_workers=int(os.getenv("MQI_MAX_WORKERS", "4")),
             case_timeout=int(os.getenv("MQI_CASE_TIMEOUT", "3600")),
-            retry_attempts=int(os.getenv("MQI_RETRY_ATTEMPTS", "3")),
-            retry_delay=int(os.getenv("MQI_RETRY_DELAY", "60"))
         )
         
         # GPU configuration
@@ -152,10 +145,10 @@ class Settings:
         )
         # Retry Policy configuration
         self.retry_policy = RetryPolicyConfig(
-            max_retries=int(os.getenv("MQI_RETRY_ATTEMPTS", "3")),
-            initial_delay_seconds=int(os.getenv("MQI_RETRY_DELAY", "5")),
-            max_delay_seconds=int(os.getenv("MQI_RETRY_MAX_DELAY", "60")),
-            backoff_multiplier=float(os.getenv("MQI_RETRY_BACKOFF", "2.0"))
+            max_retries=int(os.getenv("MQI_RETRY_POLICY_MAX_RETRIES", "3")),
+            initial_delay_seconds=int(os.getenv("MQI_RETRY_POLICY_INITIAL_DELAY", "5")),
+            max_delay_seconds=int(os.getenv("MQI_RETRY_POLICY_MAX_DELAY", "60")),
+            backoff_multiplier=float(os.getenv("MQI_RETRY_POLICY_BACKOFF_MULTIPLIER", "2.0"))
         )
 
     def _load_from_file(self, config_path: Path) -> None:
@@ -217,9 +210,8 @@ class Settings:
             if 'logging' in config_data:
                 logging_config = config_data['logging']
                 base_dir = self._yaml_config.get('paths', {}).get('base_directory', '')
-                log_dir_str = logging_config.get(
-                    'log_dir', str(self.logging.log_dir)).format(
-                        base_directory=base_dir).lstrip('/\\')
+                log_dir_template = logging_config.get('log_dir', str(self.logging.log_dir))
+                log_dir_str = log_dir_template.format(base_directory=base_dir)
                 self.logging.log_dir = Path(log_dir_str)
                 self.logging.log_level = logging_config.get(
                     'log_level', self.logging.log_level)
@@ -247,7 +239,7 @@ class Settings:
             return {
                 "scan": Path(local_paths.get('scan_directory', '').format(
                     base_directory=base_dir)),
-                "processing": Path(local_paths.get('processing_directory', '').format(
+                "csv_output": Path(local_paths.get('csv_output_directory', '').format(
                     base_directory=base_dir, case_id='{case_id}')),
                 "raw_output": Path(local_paths.get('raw_output_directory', '').format(
                     base_directory=base_dir, case_id='{case_id}')),
@@ -256,7 +248,7 @@ class Settings:
             }
         return {
             "input": Path(os.getenv("MQI_INPUT_DIR", "cases/input")),
-            "processing": Path(os.getenv("MQI_PROCESSING_DIR", "cases/processing")),
+            "csv_output": Path(os.getenv("MQI_PROCESSING_DIR", "cases/processing")),
             "output": Path(os.getenv("MQI_OUTPUT_DIR", "cases/output")),
             "failed": Path(os.getenv("MQI_FAILED_DIR", "cases/failed"))
         }

@@ -47,7 +47,7 @@ def mock_context():
 # --- Tests for InitialState ---
 
 def test_initial_state_success(mock_context):
-    from src.domain.enums import BeamStatus
+    from src.domain.enums import BeamStatus, WorkflowStep
     state = InitialState()
     mock_context.path.is_dir.return_value = True
     mock_context.gpu_repo.find_and_lock_available_gpu.return_value = {'gpu_uuid': 'gpu-1'}
@@ -58,7 +58,7 @@ def test_initial_state_success(mock_context):
     next_state = state.execute(mock_context)
 
     mock_context.case_repo.update_beam_status.assert_called_once_with(
-        mock_context.id, BeamStatus.PREPROCESSING
+        mock_context.id, BeamStatus.TPS_GENERATION
     )
     assert isinstance(next_state, FileUploadState)
 

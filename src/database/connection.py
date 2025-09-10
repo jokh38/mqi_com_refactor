@@ -76,6 +76,14 @@ class DatabaseConnection:
             )
             raise DatabaseError(f"Failed to connect to database: {e}")
 
+    def __enter__(self):
+        """Enables use of the 'with' statement for resource management."""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Ensures the database connection is closed when exiting a 'with' block."""
+        self.close()
+
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:
         """Context manager for handling database transactions with thread-safe locking.

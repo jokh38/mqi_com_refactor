@@ -36,8 +36,8 @@ from src.infrastructure.gpu_monitor import GpuMonitor
 from src.handlers.remote_handler import RemoteHandler
 from src.utils.retry_policy import RetryPolicy
 from src.core.worker import worker_main
-from src.core.dispatcher import prepare_beam_jobs, run_case_level_preprocessing
-
+from src.core.dispatcher import prepare_beam_jobs, run_case_level_csv_interpreting, run_case_level_upload
+from src.domain.enums import CaseStatus, BeamStatus
 
 def scan_existing_cases(case_queue: mp.Queue,
                         settings: Settings,
@@ -60,11 +60,10 @@ def scan_existing_cases(case_queue: mp.Queue,
             return
         # Initialize database connection and case repository
         db_path = settings.get_database_path()
-        db_connection = DatabaseConnection(db_path=db_path,
-                                           config=settings.database,
-                                           logger=logger)
-        case_repo = CaseRepository(db_connection, logger)
-        try:
+        with DatabaseConnection(db_path=db_path,
+                                config=settings.database,
+                                logger=logger) as db_connection:
+            case_repo = CaseRepository(db_connection, logger)
             # Get all case IDs from database
             existing_case_ids = set(case_repo.get_all_case_ids())
             logger.info(
@@ -101,8 +100,6 @@ def scan_existing_cases(case_queue: mp.Queue,
                             {"error": str(e)})
             else:
                 logger.info("No new cases found during startup scan")
-        finally:
-            db_connection.close()
     except Exception as e:
         logger.error("Failed to scan existing cases during startup",
                      {"error": str(e)})
@@ -158,6 +155,7 @@ class MQIApplication:
         Args:
             config_path (Optional[Path]): The path to the configuration file.
         """
+        self.config_path = config_path
         self.settings = Settings(config_path)
         self.logger: Optional[StructuredLogger] = None
         self.case_queue = mp.Queue()
@@ -186,13 +184,11 @@ class MQIApplication:
         """
         try:
             db_path = self.settings.get_database_path()
-            db_connection = DatabaseConnection(db_path=db_path,
-                                               config=self.settings.database,
-                                               logger=self.logger)
-            # Initialize database schema
-            db_connection.init_db()
-            db_connection.close()
-            self.logger.info(f"Database initialized at {db_path}")
+            with DatabaseConnection(db_path=db_path,
+                                    config=self.settings.database,
+                                    logger=self.logger) as db_connection:
+                db_connection.init_db()
+            self.logger.info("Database initialized successfully", {"path": str(db_path)})
         except Exception as e:
             self.logger.error("Failed to initialize database",
                               {"error": str(e)})
@@ -228,6 +224,7 @@ class MQIApplication:
             # Create UI process manager
             self.ui_process_manager = UIProcessManager(
                 database_path=str(db_path),
+                config_path=self.config_path,
                 config=self.settings,
                 logger=self.logger)
             # Start UI as separate process
@@ -258,20 +255,20 @@ class MQIApplication:
                 logger=self.logger)
             remote_handler = RemoteHandler(self.settings, self.logger,
                                            retry_policy)
-            # Get command and interval from settings
-            command_str = self.settings.gpu.gpu_monitor_command
-            command_list = command_str.split()
-            interval = self.settings.gpu.monitor_interval
+            # Get interval from settings
+            gpu_config = self.settings.gpu
+            interval = gpu_config.monitor_interval
+            command = gpu_config.gpu_monitor_command
             self.gpu_monitor = GpuMonitor(logger=self.logger,
                                           remote_handler=remote_handler,
                                           gpu_repository=gpu_repo,
-                                          command=command_list,
+                                          command=command,
                                           update_interval=interval)
             self.gpu_monitor.start()
             self.logger.info("GPU monitoring service started.")
         except Exception as e:
             self.logger.error("Failed to start GPU monitor", {"error": str(e)})
-
+    
     def run_worker_loop(self) -> None:
         """The main loop for processing cases from the queue.
         Manages a process pool to handle cases concurrently.
@@ -279,63 +276,87 @@ class MQIApplication:
         max_workers = self.settings.processing.max_workers
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
             self.executor = executor
-            self.logger.info(
-                f"Started worker pool with {max_workers} processes")
+            self.logger.info(f"Started worker pool with {max_workers} processes")
             active_futures = {}
             while not self.shutdown_event.is_set():
                 try:
                     # Check for new cases
                     try:
+                        # Get a new case from the queue
                         case_data = self.case_queue.get(timeout=1.0)
                         case_id = case_data["case_id"]
                         case_path = Path(case_data["case_path"])
                         self.logger.info(f"Processing new case: {case_id}")
-                        # Step 1: Run case-level preprocessing
-                        preprocessing_success = run_case_level_preprocessing(
-                            case_id, case_path, self.settings)
-                        if not preprocessing_success:
-                            self.logger.error(
-                                f"Case-level preprocessing failed for {case_id}. "
-                                f"Skipping this case.")
-                            continue
-                        # Step 2: If preprocessing is successful, prepare and submit beam jobs
-                        self.logger.info(
-                            f"Dispatching beams for case: {case_id}")
-                        beam_jobs = prepare_beam_jobs(case_id, case_path,
-                                                      self.settings)
-                        # Submit a worker for each beam
-                        for job in beam_jobs:
-                            beam_id = job["beam_id"]
-                            beam_path = job["beam_path"]
-                            self.logger.info(
-                                f"Submitting beam worker for: {beam_id}")
-                            future = executor.submit(worker_main,
-                                                     beam_id=beam_id,
-                                                     beam_path=beam_path,
-                                                     settings=self.settings)
-                            # The active_futures now tracks beams, not cases.
-                            active_futures[future] = beam_id
-                    except Exception:
+
+                        # The main process now orchestrates the initial case-level steps
+                        # and updates the database so the UI can reflect the status.
+                        with DatabaseConnection(db_path=self.settings.get_database_path(),
+                                                config=self.settings.database,
+                                                logger=self.logger) as db_conn:
+                            case_repo = CaseRepository(db_conn, self.logger)
+                            # Step 1: Discover beams and create DB records for UI visibility
+                            self.logger.info(f"Discovering beams for case: {case_id}")
+                            beam_jobs = prepare_beam_jobs(case_id, case_path, self.settings)
+                            if not beam_jobs:
+                                self.logger.error(f"No beams found for case {case_id}. Skipping.")
+                                case_repo.add_case(case_id, case_path)
+                                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="No beams found.")
+                                continue
+
+                            case_repo.create_case_with_beams(case_id, str(case_path), beam_jobs)
+                            self.logger.info(f"Created {len(beam_jobs)} beam records in DB for case {case_id}")
+
+                            # Step 2: Run case-level CSV interpreting
+                            case_repo.update_beams_status_by_case_id(case_id, "CSV_INTERPRETING")
+                            self.logger.info(f"Starting case-level CSV interpreting for {case_id}")
+                            interpreting_success = run_case_level_csv_interpreting(case_id, case_path, self.settings)
+                            if not interpreting_success:
+                                self.logger.error(f"Case-level CSV interpreting failed for {case_id}. Skipping.")
+                                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="CSV interpreting failed.")
+                                case_repo.update_beams_status_by_case_id(case_id, "FAILED")
+                                continue
+
+                            # Step 3: Run case-level file upload to HPC
+                            case_repo.update_beams_status_by_case_id(case_id, "UPLOADING")
+                            self.logger.info(f"Starting case-level file upload for {case_id}")
+                            upload_success = run_case_level_upload(case_id, case_path, self.settings)
+                            if not upload_success:
+                                self.logger.error(f"Case-level upload failed for {case_id}. Skipping.")
+                                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="File upload failed.")
+                                case_repo.update_beams_status_by_case_id(case_id, "FAILED")
+                                continue
+
+                            # Step 4: Dispatch individual workers for simulation
+                            case_repo.update_beams_status_by_case_id(case_id, "PENDING")  # Workers will pick this up
+                            self.logger.info(f"Dispatching workers for case: {case_id}")
+                            for job in beam_jobs:
+                                beam_id = job["beam_id"]
+                                beam_path = job["beam_path"]
+                                self.logger.info(f"Submitting beam worker for: {beam_id}")
+                                future = executor.submit(worker_main,
+                                                         beam_id=beam_id,
+                                                         beam_path=beam_path,
+                                                         settings=self.settings)
+                                active_futures[future] = beam_id
+
+                    except mp.queues.Empty:
                         pass  # Queue timeout, continue
+                    except Exception as e:
+                        self.logger.error(f"Error processing case from queue", {"error": str(e)})
+
                     # Check for completed workers
                     completed_futures = []
-                    for future in as_completed(active_futures.keys(),
-                                               timeout=0.1):
+                    for future in as_completed(active_futures.keys(), timeout=0.1):
                         completed_futures.append(future)
+
                     for future in completed_futures:
                         beam_id = active_futures.pop(future)
                         try:
-                            # future.exception()을 통해 예외 발생 여부를 명시적으로 확인
-                            if future.exception() is not None:
-                                # 예외가 있다면 future.result()를 호출하여 예외를 발생시키고 catch 블록에서 처리
-                                future.result()
-                            else:
-                                self.logger.info(
-                                    f"Beam worker {beam_id} completed successfully"
-                                )
+                            future.result()  # Raise exception if worker failed
+                            self.logger.info(f"Beam worker {beam_id} completed successfully")
                         except Exception as e:
-                            self.logger.error(f"Beam worker {beam_id} failed",
-                                              {"error": str(e)})
+                            self.logger.error(f"Beam worker {beam_id} failed", {"error": str(e)})
+
                 except KeyboardInterrupt:
                     self.logger.info("Received shutdown signal")
                     break

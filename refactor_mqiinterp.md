@@ -92,7 +92,7 @@ Beam Worker 내부에서 실행될 `WorkflowManager`의 상태(State)들이 HPC�
 3.  **`dispatcher_main`**: Beam 폴더들 (`beam1`, `beam2`) 탐지 후, 각 Beam에 대한 `worker_main` 프로세스 생성 요청.
 4.  **`worker_main` (개별 Beam Worker 내부)**:
     *   `WorkflowManager` (Worker용)가 상태 머신 실행.
-    *   **`InitialState` -> `PreprocessingState`**: `mqi_interpreter` 실행하여 해당 Beam 폴더 내에 **다수의 `*.csv` 파일과 개별 `moqui_tps.in` 파일 생성**.
+    *   **`InitialState` -> `CsvInterpretingState`**: `mqi_interpreter` 실행하여 해당 Beam 폴더 내에 **다수의 `*.csv` 파일과 개별 `moqui_tps.in` 파일 생성**.
     *   **`FileUploadState`**: `RemoteHandler`를 통해 생성된 **모든 `*.csv` 파일들과 `moqui_tps.in` 파일**을 HPC의 `/remote/path/caseA/beam1/` 폴더로 업로드.
     *   **`HpcExecutionState`**: `RemoteHandler`를 통해 `mqi_simulation` 잡을 HPC에 제출. (입력: `/remote/path/caseA/beam1/`, 잡 이름: `moqui_caseA_beam1`). 반환된 `job_id`를 DB에 업데이트.
     *   **`DownloadState`**: `mqi_simulation`의 결과물인 **단일 `raw` 파일**을 HPC의 `/remote/path/caseA/beam1/` 폴더에서 **`config.yaml`에 지정된 로컬 경로** (예: `C:/mqi/results/caseA/beam1/`)로 다운로드.

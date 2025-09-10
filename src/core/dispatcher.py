@@ -9,18 +9,19 @@ from typing import List, Dict, Any
 from src.config.settings import Settings
 from src.database.connection import DatabaseConnection
 from src.repositories.case_repo import CaseRepository
+from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.enums import CaseStatus, WorkflowStep
+from src.domain.enums import CaseStatus, WorkflowStep, BeamStatus
 from src.handlers.local_handler import LocalHandler
 from src.infrastructure.process_manager import CommandExecutor
 from src.utils.retry_policy import RetryPolicy
 from src.domain.errors import ProcessingError
 
 
-def run_case_level_preprocessing(
+def run_case_level_csv_interpreting(
         case_id: str, case_path: Path,
         settings: Settings) -> bool:
-    """Runs the mqi_interpreter for the entire case before beam-level processing.
+    """Runs the mqi_interpreter for the entire case to generate CSV files.
 
     Args:
         case_id (str): The ID of the case.
@@ -28,7 +29,7 @@ def run_case_level_preprocessing(
         settings (Settings): The application settings object.
 
     Returns:
-        bool: True if preprocessing was successful, False otherwise.
+        bool: True if CSV interpreting was successful, False otherwise.
     """
     logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
     db_connection = None
@@ -56,43 +57,48 @@ def run_case_level_preprocessing(
         )
         case_repo = CaseRepository(db_connection, logger)
 
-        logger.info(f"Starting case-level preprocessing for: {case_id}")
+        logger.info(f"Starting case-level CSV interpreting for: {case_id}")
         case_repo.record_workflow_step(
             case_id=case_id,
-            step=WorkflowStep.PREPROCESSING,
-            status="started",
+            step=WorkflowStep.CSV_INTERPRETING,
+            status="started",  # This status is for the workflow history, not the beam status
             metadata={"message": "Running mqi_interpreter for the whole case."}
         )
 
-        # The output of the case-level interpreter should go into the case directory itself
-        # from where beam-level workflows can pick up the results.
+        # Get the configured output directory for CSVs and ensure it exists
+        case_dirs = settings.get_case_directories()
+        csv_output_dir_template = case_dirs.get("csv_output")
+        if not csv_output_dir_template:
+            raise ProcessingError("'csv_output_directory' not found in configuration.")
+        csv_output_dir = Path(str(csv_output_dir_template).format(case_id=case_id))
+        csv_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # The output of the case-level interpreter should go into the configured csv_output directory.
         result = local_handler.run_mqi_interpreter(
             beam_directory=case_path,
-            output_dir=case_path,
+            output_dir=csv_output_dir,
             case_id=case_id
         )
 
         if not result.success:
             error_message = (
-                f"Case-level mqi_interpreter failed for '{case_id}'. "
+                f"Case-level CSV interpreting (mqi_interpreter) failed for '{case_id}'. "
                 f"Error: {result.error}")
             raise ProcessingError(error_message)
 
         # Verify that CSV files were created for each beam
-        beam_dirs = [d for d in case_path.iterdir() if d.is_dir()]
-        for beam_dir in beam_dirs:
-            if not any(beam_dir.glob("*.csv")):
-                logger.warning(
-                    f"No CSV files found in beam directory {beam_dir.name} "
-                    f"after case-level preprocessing.")
-                # Depending on requirements, this could be a fatal error for the case.
-                # For now, we'll log a warning and proceed.
+        if not any(csv_output_dir.glob("*.csv")):
+            logger.warning(
+                f"No CSV files found in the output directory {csv_output_dir} "
+                f"after case-level CSV interpreting.")
+            # Depending on requirements, this could be a fatal error.
+            # For now, we log a warning and proceed, but a stricter check might be needed.
 
         logger.info(
-            f"Case-level preprocessing completed successfully for: {case_id}")
+            f"Case-level CSV interpreting completed successfully for: {case_id}")
         case_repo.record_workflow_step(
             case_id=case_id,
-            step=WorkflowStep.PREPROCESSING,
+            step=WorkflowStep.CSV_INTERPRETING,
             status="completed",
             metadata={
                 "message": "mqi_interpreter finished successfully for the whole case."
@@ -100,7 +106,7 @@ def run_case_level_preprocessing(
         return True
 
     except Exception as e:
-        logger.error("Case-level preprocessing failed",
+        logger.error("Case-level CSV interpreting failed",
                      {"case_id": case_id, "error": str(e)})
         if db_connection:
             try:
@@ -109,12 +115,12 @@ def run_case_level_preprocessing(
                                              CaseStatus.FAILED,
                                              error_message=str(e))
                 case_repo.record_workflow_step(case_id=case_id,
-                                               step=WorkflowStep.PREPROCESSING,
+                                               step=WorkflowStep.CSV_INTERPRETING,
                                                status="failed",
                                                metadata={"error": str(e)})
             except Exception as db_e:
                 logger.error(
-                    "Failed to update case status during preprocessing error",
+                    "Failed to update case status during CSV interpreting error",
                     {"case_id": case_id, "db_error": str(db_e)})
         return False
     finally:
@@ -122,11 +128,96 @@ def run_case_level_preprocessing(
             db_connection.close()
 
 
+def run_case_level_upload(case_id: str, case_path: Path, settings: Settings) -> bool:
+    """Uploads all generated CSV files to each beam's remote directory.
+
+    Args:
+        case_id (str): The ID of the case.
+        case_path (Path): The file system path to the case directory.
+        settings (Settings): The application settings object.
+
+    Returns:
+        bool: True if the upload was successful, False otherwise.
+    """
+    logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
+    db_connection = None
+    remote_handler = None
+    try:
+        # Setup dependencies
+        retry_policy = RetryPolicy(
+            max_attempts=settings.retry_policy.max_retries,
+            base_delay=settings.retry_policy.initial_delay_seconds,
+            max_delay=settings.retry_policy.max_delay_seconds,
+            backoff_multiplier=settings.retry_policy.backoff_multiplier,
+            logger=logger,
+        )
+        remote_handler = RemoteHandler(settings, logger, retry_policy)
+
+        db_path = settings.get_database_path()
+        db_connection = DatabaseConnection(db_path=db_path, config=settings.database, logger=logger)
+        case_repo = CaseRepository(db_connection, logger)
+
+        logger.info(f"Starting case-level file upload for: {case_id}")
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.UPLOADING,
+            status="started",
+            metadata={"message": "Uploading all CSV files for the case."}
+        )
+
+        # Get CSV files from the configured output directory
+        case_dirs = settings.get_case_directories()
+        csv_output_dir_template = case_dirs.get("csv_output")
+        csv_output_dir = Path(str(csv_output_dir_template).format(case_id=case_id))
+        csv_files = list(csv_output_dir.glob("*.csv"))
+
+        if not csv_files:
+            logger.warning(f"No CSV files found to upload for case {case_id}", {"directory": str(csv_output_dir)})
+            return True  # Not a failure if no files to upload
+
+        beams = case_repo.get_beams_for_case(case_id)
+        if not beams:
+            raise ProcessingError(f"No beams found in database for case {case_id} during upload.")
+
+        hpc_paths = settings.get_hpc_paths()
+        remote_base_dir = hpc_paths.get("remote_case_path_template")
+        if not remote_base_dir:
+            raise ProcessingError("`remote_case_path_template` not configured.")
+
+        # Upload all CSVs to each beam's remote directory
+        for beam in beams:
+            remote_beam_dir = f"{remote_base_dir}/{beam.parent_case_id}/{beam.beam_id}"
+            logger.info(f"Uploading {len(csv_files)} CSVs to remote dir for beam {beam.beam_id}", {"remote_dir": remote_beam_dir})
+            for csv_file in csv_files:
+                result = remote_handler.upload_file(local_file=csv_file, remote_dir=remote_beam_dir)
+                if not result.success:
+                    raise ProcessingError(f"Failed to upload file {csv_file.name} for beam {beam.beam_id}: {result.error}")
+
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.UPLOADING,
+            status="completed",
+            metadata={"message": f"Uploaded {len(csv_files)} CSV files to {len(beams)} beam directories."}
+        )
+        return True
+    except Exception as e:
+        logger.error("Case-level file upload failed", {"case_id": case_id, "error": str(e)})
+        # Further error handling to update DB status can be added here
+        return False
+    finally:
+        if db_connection:
+            db_connection.close()
+        if remote_handler:
+            remote_handler.disconnect()
+
+
 def prepare_beam_jobs(
     case_id: str, case_path: Path, settings: Settings
 ) -> List[Dict[str, Any]]:
-    """Scans a case directory for beams, creates records for them in the database,
-    and returns a list of jobs to be processed by workers.
+    """Scans a case directory for beams and returns a list of jobs to be processed by workers.
+
+    This function no longer interacts with the database. It only discovers beam
+    subdirectories and prepares the job information.
 
     Args:
         case_id (str): The ID of the parent case.
@@ -138,70 +229,28 @@ def prepare_beam_jobs(
         Returns an empty list if no beams are found or an error occurs.
     """
     logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
-    db_connection = None
     beam_jobs = []
 
     try:
-        logger.info(f"Dispatching beams for case: {case_id}")
-
-        # Establish database connection
-        db_path = settings.get_database_path()
-        db_connection = DatabaseConnection(
-            db_path=db_path, config=settings.database, logger=logger
-        )
-        case_repo = CaseRepository(db_connection, logger)
-
-        # Update parent case status to PROCESSING
-        case_repo.update_case_status(case_id, CaseStatus.PROCESSING)
+        logger.info(f"Scanning for beams for case: {case_id}")
 
         # Scan for beam subdirectories
         beam_paths = [d for d in case_path.iterdir() if d.is_dir()]
 
         if not beam_paths:
             logger.warning("No beam subdirectories found.", {"case_id": case_id})
-            # If no beams, maybe the case is failed or completed differently
-            case_repo.update_case_status(
-                case_id,
-                CaseStatus.FAILED,
-                error_message="No beam subdirectories found")
             return []
 
-        logger.info(f"Found {len(beam_paths)} beams to process.",
-                    {"case_id": case_id})
+        logger.info(f"Found {len(beam_paths)} beams to process.", {"case_id": case_id})
 
         for beam_path in beam_paths:
             beam_name = beam_path.name
             beam_id = f"{case_id}_{beam_name}"
-
-            # Create a record for the beam in the database
-            case_repo.create_beam_record(
-                beam_id=beam_id, parent_case_id=case_id, beam_path=beam_path
-            )
-            logger.info(f"Created DB record for beam: {beam_id}")
-
-            # Add job to the list
             beam_jobs.append({"beam_id": beam_id, "beam_path": beam_path})
 
-        logger.info(
-            f"Successfully prepared {len(beam_jobs)} beam jobs for case: {case_id}")
-
+        logger.info(f"Successfully prepared {len(beam_jobs)} beam jobs for case: {case_id}")
     except Exception as e:
-        logger.error("Failed to dispatch beams",
-                     {"case_id": case_id, "error": str(e)})
-        # Attempt to mark the parent case as failed
-        if db_connection:
-            try:
-                case_repo = CaseRepository(db_connection, logger)
-                case_repo.update_case_status(case_id,
-                                             CaseStatus.FAILED,
-                                             error_message=str(e))
-            except Exception as db_e:
-                logger.error(
-                    "Failed to update case status during dispatch error",
-                    {"case_id": case_id, "db_error": str(db_e)})
+        logger.error("Failed to prepare beam jobs", {"case_id": case_id, "error": str(e)})
         return []  # Return empty list on error
-    finally:
-        if db_connection:
-            db_connection.close()
 
     return beam_jobs

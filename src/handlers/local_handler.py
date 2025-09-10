@@ -56,22 +56,22 @@ class LocalHandler:
         self.python_interpreter = self._get_python_interpreter()
 
     def _get_python_interpreter(self) -> str:
-        """Get the Python interpreter path from configuration.
+        """Get the Python interpreter path from configuration."""
+        return self.settings.get_executables().get("python_interpreter", "python")
 
-        Returns:
-            str: The path to the Python interpreter.
+    def _normalize_path_for_command(self, path: str) -> str:
         """
-        return self.settings.get_executables().get("python_interpreter",
-                                                    "python3")
-
-    def _convert_windows_path_to_wsl(self, path: str) -> str:
-        """Convert a Windows path to a WSL path if running in a WSL environment.
+        Normalize a path for command-line execution.
+        - On WSL, converts Windows paths (e.g., C:\\...) to WSL paths (e.g., /mnt/c/...).
+        - On Windows, converts backslashes to forward slashes to prevent escape
+          sequence issues in command strings.
+        - On other Linux/macOS, returns the path as is.
 
         Args:
             path (str): The path string that might be a Windows path.
 
         Returns:
-            str: The path converted to WSL format if necessary.
+            str: The normalized path string.
         """
         # Check if we're running in WSL
         if platform.system() == "Linux" and "microsoft" in platform.release(
@@ -81,6 +81,10 @@ class LocalHandler:
                 return path.replace("C:", "/mnt/c").replace("\\", "/")
             elif path.startswith("D:"):
                 return path.replace("D:", "/mnt/d").replace("\\", "/")
+        # On native Windows, convert backslashes to forward slashes.
+        # This is safer for string formatting and subprocess execution.
+        elif platform.system() == "Windows":
+            return path.replace("\\", "/")
         return path
 
     def _build_command_from_template(self, template_name: str,
@@ -107,12 +111,12 @@ class LocalHandler:
             executables = self.settings.get_executables()
             converted_executables = {}
             for key, value in executables.items():
-                converted_executables[key] = self._convert_windows_path_to_wsl(
+                converted_executables[key] = self._normalize_path_for_command(
                     value)
             converted_kwargs = {}
             for key, value in kwargs.items():
                 if isinstance(value, str):
-                    converted_kwargs[key] = self._convert_windows_path_to_wsl(
+                    converted_kwargs[key] = self._normalize_path_for_command(
                         value)
                 else:
                     converted_kwargs[key] = value

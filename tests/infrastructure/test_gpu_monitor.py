@@ -37,6 +37,7 @@ def gpu_monitor(mock_logger, mock_remote_handler, mock_gpu_repository):
         logger=mock_logger,
         remote_handler=mock_remote_handler,
         gpu_repository=mock_gpu_repository,
+        command="nvidia-smi --query-gpu=uuid,name,memory.total,memory.used,memory.free,temperature.gpu,utilization.gpu --format=csv,noheader,nounits",
         update_interval=0.1
     )
     return monitor
@@ -47,6 +48,7 @@ def test_gpu_monitor_initialization(gpu_monitor, mock_logger, mock_remote_handle
     assert gpu_monitor.remote_handler is mock_remote_handler
     assert gpu_monitor.gpu_repository is mock_gpu_repository
     assert gpu_monitor.update_interval == 0.1
+    assert gpu_monitor.command is not None
     assert gpu_monitor._monitor_thread is None
     assert isinstance(gpu_monitor._shutdown_event, threading.Event)
 
@@ -96,10 +98,9 @@ def test_monitor_loop_logic(mock_sleep, gpu_monitor, mock_remote_handler, mock_g
         gpu_monitor._monitor_loop()
 
     # Verify that the remote command was executed
-    from src.config.constants import NVIDIA_SMI_QUERY_COMMAND
     mock_remote_handler.execute_remote_command.assert_called_once_with(
         context_id="gpu_monitoring",
-        command=NVIDIA_SMI_QUERY_COMMAND
+        command=gpu_monitor.command
     )
 
     # Verify that the repository was updated with parsed data
@@ -109,7 +110,7 @@ def test_monitor_loop_logic(mock_sleep, gpu_monitor, mock_remote_handler, mock_g
     assert len(call_args[0]) == 1
     parsed_data = call_args[0][0]
     assert parsed_data['uuid'] == 'gpu-uuid-1'
-    assert parsed_data['name'] == 'NVIDIA RTX 3090'
+    assert parsed_data['name'] == 'RTX 3090'
     assert parsed_data['memory_total'] == 24576
 
     # Verify that the shutdown event wait was called
@@ -133,3 +134,11 @@ def test_fetch_and_update_gpus_command_fails(gpu_monitor, mock_remote_handler, m
 
     # Verify the repository was not called
     mock_gpu_repository.update_resources.assert_not_called()
+
+def test_parse_gpu_name(gpu_monitor):
+    """Test the _parse_gpu_name method."""
+    assert gpu_monitor._parse_gpu_name("  NVIDIA RTX 3090  ") == "RTX 3090"
+    assert gpu_monitor._parse_gpu_name("RTX 3090") == "RTX 3090"
+    assert gpu_monitor._parse_gpu_name("NVIDIA Tesla V100") == "Tesla V100"
+    assert gpu_monitor._parse_gpu_name("  AMD Radeon Pro WX 7100  ") == "AMD Radeon Pro WX 7100"
+    assert gpu_monitor._parse_gpu_name("") == ""

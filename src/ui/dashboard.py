@@ -12,10 +12,11 @@ manager in its own process space.
 
 import sys
 import signal
+import os
 import time
 from pathlib import Path
-from typing import NoReturn
-
+from typing import NoReturn, Optional
+import argparse
 from src.config.settings import Settings
 from src.infrastructure.logging_handler import StructuredLogger
 from src.database.connection import DatabaseConnection
@@ -32,13 +33,16 @@ class DashboardProcess:
     in a separate process.
     """
     
-    def __init__(self, database_path: str):
+    def __init__(self, database_path: str, config_path: Optional[str] = None):
         """Initialize the dashboard process.
 
         Args:
             database_path (str): The path to the SQLite database file.
+            config_path (Optional[str]): Path to the YAML configuration file.
         """
         self.database_path = database_path
+        self.config_path = Path(config_path) if config_path else None
+        self.settings = Settings(self.config_path)
         self.logger: StructuredLogger = None
         self.display_manager: DisplayManager = None
         self.running = False
@@ -46,11 +50,9 @@ class DashboardProcess:
     def initialize_logging(self) -> None:
         """Initialize logging for the UI process."""
         try:
-            # Use default settings for UI process logging
-            settings = Settings()
             self.logger = StructuredLogger(
                 name="ui_dashboard",
-                config=settings.logging
+                config=self.settings.logging
             )
             self.logger.info("Dashboard process starting", {
                 "database_path": self.database_path
@@ -66,11 +68,9 @@ class DashboardProcess:
             tuple[CaseRepository, GpuRepository]: A tuple containing the case and GPU repositories.
         """
         try:
-            # Use default settings for database connection
-            settings = Settings()
             db_connection = DatabaseConnection(
                 db_path=Path(self.database_path),
-                config=settings.database,
+                config=self.settings.database,
                 logger=self.logger
             )
             
@@ -156,7 +156,7 @@ def setup_signal_handlers(dashboard: DashboardProcess) -> None:
         dashboard (DashboardProcess): The DashboardProcess instance to shut down.
     """
     def signal_handler(signum, frame):
-        print(f"\\nReceived signal {signum}, shutting down dashboard...")
+        print(f"\nReceived signal {signum}, shutting down dashboard...")
         dashboard.running = False
     
     signal.signal(signal.SIGINT, signal_handler)
@@ -165,23 +165,27 @@ def setup_signal_handlers(dashboard: DashboardProcess) -> None:
 
 def main() -> NoReturn:
     """The main entry point for the dashboard process."""
-    if len(sys.argv) != 2:
-        print("Usage: python -m src.ui.dashboard <database_path>")
-        sys.exit(1)
-    
-    database_path = sys.argv[1]
+    parser = argparse.ArgumentParser(description="MQI Communicator Dashboard")
+    parser.add_argument("database_path", type=str, help="Path to the SQLite database file.")
+    parser.add_argument("--config", type=str, help="Path to the YAML configuration file.", default=None)
+    args = parser.parse_args()
     
     # Validate database path
-    if not Path(database_path).exists():
-        print(f"Database file does not exist: {database_path}")
+    if not Path(args.database_path).exists():
+        print(f"Database file does not exist: {args.database_path}")
         sys.exit(1)
     
     # Create and run dashboard
-    dashboard = DashboardProcess(database_path)
+    dashboard = DashboardProcess(
+        database_path=args.database_path,
+        config_path=args.config
+    )
     setup_signal_handlers(dashboard)
     
-    print(f"Starting MQI Dashboard UI (PID: {sys.argv[0]})...")
-    print(f"Database: {database_path}")
+    print(f"Starting MQI Dashboard UI (PID: {os.getpid()})...")
+    print(f"Database: {args.database_path}")
+    if args.config:
+        print(f"Config: {args.config}")
     print("Press Ctrl+C to stop")
     
     dashboard.run()

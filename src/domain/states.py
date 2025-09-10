@@ -81,7 +81,7 @@ class InitialState(WorkflowState):
             "beam_id": context.id,
             "beam_path": str(context.path)
         })
-        context.case_repo.update_beam_status(context.id, BeamStatus.PREPROCESSING)
+        context.case_repo.update_beam_status(context.id, BeamStatus.TPS_GENERATION)
 
         if not context.path.is_dir():
             raise ProcessingError(f"Beam path is not a valid directory: {context.path}")
@@ -151,7 +151,7 @@ class FileUploadState(WorkflowState):
         context.shared_context["remote_beam_dir"] = remote_beam_dir
 
         local_beam_path = context.path
-        files_to_upload = list(local_beam_path.glob("*.csv"))
+        files_to_upload = []  # CSVs are now uploaded at the case level by the main process.
         tps_file = local_beam_path / "moqui_tps.in"
 
         if not tps_file.exists():
