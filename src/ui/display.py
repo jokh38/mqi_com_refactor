@@ -7,6 +7,7 @@
 from typing import Optional
 import threading
 import time
+import signal
 from datetime import datetime, timezone, timedelta
 
 from rich.console import Console
@@ -39,14 +40,15 @@ class DisplayManager:
         """
         self.provider = provider
         self.logger = logger
-        # Force Rich to treat this as a terminal even if it doesn't detect it as one
-        self.console = Console(force_terminal=True, width=120, height=30)
+        # Force Rich to treat this as a terminal and auto-detect size
+        self.console = Console(force_terminal=True)
         self.layout = self._create_layout()
         self.live: Optional[Live] = None
         self.running = False
         self._update_thread: Optional[threading.Thread] = None
         self._refresh_rate = refresh_rate
         self._local_tz = timezone(timedelta(hours=timezone_hours))
+        self._resize_needed = False
 
     def _create_layout(self) -> Layout:
         """Creates and returns the main layout structure for the dashboard.
@@ -72,6 +74,13 @@ class DisplayManager:
 
         self.running = True
         
+        # Set up signal handler for terminal resize (SIGWINCH)
+        try:
+            signal.signal(signal.SIGWINCH, self._handle_resize)
+        except (AttributeError, ValueError):
+            # SIGWINCH may not be available on all platforms (e.g., Windows)
+            pass
+        
         try:
             # Try with screen=True first (alternate screen mode)
             self.live = Live(self.layout, console=self.console, screen=True, auto_refresh=False)
@@ -90,6 +99,10 @@ class DisplayManager:
         self._update_thread.start()
         self.logger.info("Display manager started.")
 
+    def _handle_resize(self, signum, frame):
+        """Handle terminal resize signal."""
+        self._resize_needed = True
+
     def stop(self) -> None:
         """Stops the display update loop and cleans up resources."""
         if not self.running:
@@ -107,6 +120,19 @@ class DisplayManager:
         """The main update loop that runs in a separate thread."""
         while self.running:
             try:
+                # Check if resize is needed and recreate Live object if so
+                if self._resize_needed and self.live:
+                    self._resize_needed = False
+                    try:
+                        # Stop current Live object
+                        self.live.stop()
+                        # Create new Console and Live with updated terminal size
+                        self.console = Console(force_terminal=True)
+                        self.live = Live(self.layout, console=self.console, screen=True, auto_refresh=False)
+                        self.live.start()
+                    except Exception as e:
+                        self.logger.error("Error handling resize", {"error": str(e)})
+                
                 self.provider.refresh_all_data()
                 self.update_display()
                 time.sleep(self._refresh_rate)

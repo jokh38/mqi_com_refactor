@@ -42,7 +42,6 @@ class UIProcessManager:
         self.project_root = Path(__file__).parent.parent.parent
         self._process: Optional[subprocess.Popen] = None
         self._stdout_log_file: Optional[IO[str]] = None
-        self._stderr_log_file: Optional[IO[str]] = None
         self._is_running = False
         self.log_dir = self.project_root / self.config.logging.log_dir
     
@@ -70,13 +69,8 @@ class UIProcessManager:
                     "platform": platform.system()
                 })
             
-            # Ensure log directory exists
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            stderr_log_path = self.log_dir / "dashboard_stderr.log"
-
-            # Only open stderr log file since stdout goes to console
-            self._stderr_log_file = open(stderr_log_path, "w", encoding='utf-8')
-            self._stdout_log_file = None  # No longer needed
+            # No log files needed - let output go to console
+            self._stdout_log_file = None
 
             # Start the UI process
             if self.logger:
@@ -86,14 +80,13 @@ class UIProcessManager:
                     "creation_flags": creation_flags
                 })
             
-            # For UI dashboard, we want output to go to the console window, not log files
-            # Only redirect stderr to log file to capture errors
+            # For UI dashboard, let all output go to the console window
             self._process = subprocess.Popen(
                 command,
                 creationflags=creation_flags,
                 cwd=self.project_root,
                 stdout=None,  # Let stdout go to the console window
-                stderr=self._stderr_log_file  # Keep stderr logging for error capture
+                stderr=None   # Let stderr go to the console window too
             )
             
             # Give the process a moment to start
@@ -109,25 +102,10 @@ class UIProcessManager:
                     })
                 return True
             else:
-                # Process failed to start - read error logs immediately
-                self._stderr_log_file.flush()
-                self._stdout_log_file.flush()
-                
-                # Read the error from stderr log
-                try:
-                    with open(stderr_log_path, 'r', encoding='utf-8') as f:
-                        stderr_content = f.read()
-                    # stdout_log_file is no longer used since stdout goes to console
-                    stdout_content = "Stdout redirected to console window"
-                except Exception:
-                    stderr_content = "Could not read stderr log"
-                    stdout_content = "Stdout redirected to console window"
-                
+                # Process failed to start
                 if self.logger:
-                    self.logger.error("UI process failed to start. Check dashboard logs for details.", {
-                        "stderr_log": str(stderr_log_path),
-                        "return_code": poll_result,
-                        "stderr_content": stderr_content[:500]  # First 500 chars
+                    self.logger.error("UI process failed to start.", {
+                        "return_code": poll_result
                     })
                 self._process = None
                 return False
@@ -147,11 +125,7 @@ class UIProcessManager:
         Returns:
             bool: True if the process stopped successfully, False otherwise.
         """
-        # Always try to close file handles, regardless of process state.
-        if self._stderr_log_file:
-            try: self._stderr_log_file.close()
-            except Exception: pass
-            self._stderr_log_file = None
+        # No file handles to close since we removed stderr logging
 
         if not self._is_running or not self._process:
             return True

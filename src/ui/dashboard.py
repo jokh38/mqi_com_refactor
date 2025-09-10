@@ -14,16 +14,118 @@ import sys
 import signal
 import os
 import time
+import logging
+import json
 from pathlib import Path
-from typing import NoReturn, Optional
+from typing import NoReturn, Optional, Dict, Any
 import argparse
-from src.config.settings import Settings
+from datetime import datetime, timezone, timedelta
+from logging.handlers import RotatingFileHandler
+from src.config.settings import Settings, LoggingConfig
 from src.infrastructure.logging_handler import StructuredLogger
 from src.database.connection import DatabaseConnection
 from src.repositories.case_repo import CaseRepository
 from src.repositories.gpu_repo import GpuRepository
 from src.ui.provider import DashboardDataProvider
 from src.ui.display import DisplayManager
+
+
+class DashboardLogger:
+    """A logger that only writes to files, not console, for dashboard UI."""
+    
+    def __init__(self, name: str, config: LoggingConfig):
+        """Initialize dashboard logger with file-only output.
+
+        Args:
+            name (str): The logger name.
+            config (LoggingConfig): The logging configuration settings.
+        """
+        self.config = config
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(getattr(logging, config.log_level.upper()))
+        
+        # Prevent duplicate handlers
+        if not self.logger.handlers:
+            self._setup_file_handler_only()
+    
+    def _setup_file_handler_only(self) -> None:
+        """Setup only file handler, no console output."""
+        # Ensure log directory exists
+        self.config.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # File handler with rotation - NO console handler
+        log_file = self.config.log_dir / f"{self.logger.name}.log"
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=self.config.max_file_size * 1024 * 1024,  # MB to bytes
+            backupCount=self.config.backup_count
+        )
+        
+        # Set formatter
+        if self.config.structured_logging:
+            formatter = self._create_json_formatter()
+        else:
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+        
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
+    
+    def _create_json_formatter(self):
+        """Create a JSON formatter for structured logging."""
+        config = self.config
+        
+        class JsonFormatter(logging.Formatter):
+            def format(self, record):
+                local_tz = timezone(timedelta(hours=config.timezone_hours))
+                log_data = {
+                    'timestamp': datetime.now(local_tz).isoformat(),
+                    'logger': record.name,
+                    'level': record.levelname,                    
+                    'message': record.getMessage(),
+                    'module': record.module,
+                    'function': record.funcName,
+                    'line': record.lineno
+                }
+                
+                if hasattr(record, 'context'):
+                    log_data['context'] = record.context
+                
+                if record.exc_info:
+                    log_data['exception'] = self.formatException(record.exc_info)
+                
+                return json.dumps(log_data, default=str)
+        
+        return JsonFormatter()
+    
+    def _log_with_context(self, level: int, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log a message with structured context."""
+        extra = {}
+        if context and self.config.structured_logging:
+            extra['context'] = context
+        
+        self.logger.log(level, message, extra=extra, exc_info=exc_info)
+    
+    def debug(self, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log a debug message with optional context."""
+        self._log_with_context(logging.DEBUG, message, context, exc_info=exc_info)
+    
+    def info(self, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log an info message with optional context."""
+        self._log_with_context(logging.INFO, message, context, exc_info=exc_info)
+    
+    def warning(self, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log a warning message with optional context."""
+        self._log_with_context(logging.WARNING, message, context, exc_info=exc_info)
+    
+    def error(self, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log an error message with optional context."""
+        self._log_with_context(logging.ERROR, message, context, exc_info=exc_info)
+    
+    def critical(self, message: str, context: Dict[str, Any] = None, exc_info=False):
+        """Log a critical message with optional context."""
+        self._log_with_context(logging.CRITICAL, message, context, exc_info=exc_info)
 
 
 class DashboardProcess:
@@ -49,20 +151,25 @@ class DashboardProcess:
         
     def initialize_logging(self) -> None:
         """Initialize logging for the UI process."""
-        print(f"[DEBUG] initialize_logging() called")
         try:
-            print(f"[DEBUG] Creating StructuredLogger with config: {self.settings.logging}")
-            self.logger = StructuredLogger(
-                name="ui_dashboard",
-                config=self.settings.logging
+            # Create a custom logger configuration for dashboard that only logs to file
+            dashboard_logging_config = type(self.settings.logging)(
+                log_level=self.settings.logging.log_level,
+                log_dir=self.settings.logging.log_dir,
+                max_file_size=self.settings.logging.max_file_size,
+                backup_count=self.settings.logging.backup_count,
+                structured_logging=self.settings.logging.structured_logging,
+                timezone_hours=self.settings.logging.timezone_hours
             )
-            print(f"[DEBUG] StructuredLogger created successfully")
+            
+            self.logger = DashboardLogger(
+                name="ui_dashboard",
+                config=dashboard_logging_config
+            )
             self.logger.info("Dashboard process starting", {
                 "database_path": self.database_path
             })
-            print(f"[DEBUG] Logging initialized successfully")
         except Exception as e:
-            print(f"[DEBUG] ERROR in initialize_logging: {e}")
             print(f"Failed to initialize logging: {e}")
             sys.exit(1)
     
@@ -72,61 +179,46 @@ class DashboardProcess:
         Returns:
             tuple[CaseRepository, GpuRepository]: A tuple containing the case and GPU repositories.
         """
-        print(f"[DEBUG] setup_database_components() called")
         try:
-            print(f"[DEBUG] Creating DatabaseConnection with db_path: {Path(self.database_path)}")
             db_connection = DatabaseConnection(
                 db_path=Path(self.database_path),
                 config=self.settings.database,
                 logger=self.logger
             )
-            print(f"[DEBUG] DatabaseConnection created successfully")
             
             # Create repositories
-            print(f"[DEBUG] Creating repositories...")
             case_repo = CaseRepository(db_connection, self.logger)
             gpu_repo = GpuRepository(db_connection, self.logger)
-            print(f"[DEBUG] Repositories created successfully")
             
             self.logger.info("Database components initialized successfully")
             return case_repo, gpu_repo
             
         except Exception as e:
-            print(f"[DEBUG] ERROR in setup_database_components: {e}")
             self.logger.error("Failed to setup database components", {"error": str(e)})
             sys.exit(1)
     
     def start_display(self) -> None:
         """Start the display manager."""
-        print(f"[DEBUG] start_display() called")
         try:
             # Setup database components
-            print(f"[DEBUG] Setting up database components...")
             case_repo, gpu_repo = self.setup_database_components()
-            print(f"[DEBUG] Database components setup complete")
             
             # Create data provider
-            print(f"[DEBUG] Creating DashboardDataProvider...")
             provider = DashboardDataProvider(case_repo, gpu_repo, self.logger)
-            print(f"[DEBUG] DashboardDataProvider created successfully")
             
             # Create and start display manager
-            print(f"[DEBUG] Creating DisplayManager...")
             self.display_manager = DisplayManager(
                 provider, 
                 self.logger,
                 refresh_rate=self.settings.ui.refresh_interval,
                 timezone_hours=self.settings.logging.timezone_hours
             )
-            print(f"[DEBUG] Starting DisplayManager...")
             self.display_manager.start()
-            print(f"[DEBUG] DisplayManager started successfully")
             
             self.running = True
             self.logger.info("Dashboard display started successfully")
             
         except Exception as e:
-            print(f"[DEBUG] ERROR in start_display: {e}")
             self.logger.error("Failed to start display", {"error": str(e)})
             sys.exit(1)
     
@@ -181,7 +273,6 @@ def setup_signal_handlers(dashboard: DashboardProcess) -> None:
         dashboard (DashboardProcess): The DashboardProcess instance to shut down.
     """
     def signal_handler(signum, frame):
-        print(f"\nReceived signal {signum}, shutting down dashboard...")
         dashboard.running = False
     
     signal.signal(signal.SIGINT, signal_handler)
