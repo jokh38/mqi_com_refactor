@@ -2,10 +2,7 @@
 # Target File: src/utils/path_manager.py
 # Source Reference: Path handling logic from various modules
 # =====================================================================================
-"""!
-@file path_manager.py
-@brief Manages file system paths and operations in a centralized, reusable way.
-"""
+"""Manages file system paths and operations in a centralized, reusable way."""
 
 from pathlib import Path
 from typing import List, Optional, Union, Dict, Any
@@ -18,23 +15,27 @@ from src.domain.errors import ValidationError
 
 
 class PathManager:
-    """!
-    @brief Manages file system paths and operations in a centralized, reusable way.
-    """
+    """Manages file system paths and operations in a centralized, reusable way."""
 
     def __init__(self, logger: Optional[StructuredLogger] = None):
-        """!
-        @brief Initializes the path manager.
-        @param logger: An optional logger instance.
+        """Initializes the path manager.
+
+        Args:
+            logger (Optional[StructuredLogger], optional): An optional logger instance. Defaults to None.
         """
         self.logger = logger
 
     def validate_case_path(self, case_path: Union[str, Path]) -> Path:
-        """!
-        @brief Validates and normalizes a case directory path.
-        @param case_path: The path to the case directory.
-        @return The validated Path object.
-        @raises ValidationError: If the path does not exist or is not a directory.
+        """Validates and normalizes a case directory path.
+
+        Args:
+            case_path (Union[str, Path]): The path to the case directory.
+
+        Raises:
+            ValidationError: If the path does not exist or is not a directory.
+
+        Returns:
+            Path: The validated Path object.
         """
         path = Path(case_path)
         if not path.exists():
@@ -44,11 +45,16 @@ class PathManager:
         return path
 
     def ensure_directory_exists(self, directory_path: Union[str, Path]) -> Path:
-        """!
-        @brief Ensures that a directory exists, creating it if necessary.
-        @param directory_path: The path to the directory.
-        @return The Path object of the directory.
-        @raises ValidationError: If the directory could not be created.
+        """Ensures that a directory exists, creating it if necessary.
+
+        Args:
+            directory_path (Union[str, Path]): The path to the directory.
+
+        Raises:
+            ValidationError: If the directory could not be created.
+
+        Returns:
+            Path: The Path object of the directory.
         """
         path = Path(directory_path)
         try:
@@ -59,17 +65,21 @@ class PathManager:
             raise ValidationError(f"Failed to create directory: {path}") from e
 
     def get_temp_directory(self, prefix: str = "mqi_temp") -> Path:
-        """!
-        @brief Creates and returns a temporary directory path.
-        @param prefix: The prefix for the temporary directory name.
-        @return The path to the temporary directory.
+        """Creates and returns a temporary directory path.
+
+        Args:
+            prefix (str, optional): The prefix for the temporary directory name. Defaults to "mqi_temp".
+
+        Returns:
+            Path: The path to the temporary directory.
         """
         return Path(tempfile.mkdtemp(prefix=prefix))
 
     def cleanup_temp_directory(self, temp_path: Path) -> None:
-        """!
-        @brief Safely removes a temporary directory and its contents.
-        @param temp_path: The path to the temporary directory.
+        """Safely removes a temporary directory and its contents.
+
+        Args:
+            temp_path (Path): The path to the temporary directory.
         """
         try:
             shutil.rmtree(temp_path)
@@ -79,20 +89,28 @@ class PathManager:
                 self.logger.error("Failed to cleanup temp directory", {"path": str(temp_path), "error": str(e)})
 
     def find_files_by_pattern(self, directory: Union[str, Path], pattern: str) -> List[Path]:
-        """!
-        @brief Finds files in a directory matching a glob pattern.
-        @param directory: The directory to search in.
-        @param pattern: The glob pattern to match.
-        @return A list of matching file paths.
+        """Finds files in a directory matching a glob pattern.
+
+        Args:
+            directory (Union[str, Path]): The directory to search in.
+            pattern (str): The glob pattern to match.
+
+        Returns:
+            List[Path]: A list of matching file paths.
         """
         return list(Path(directory).glob(pattern))
 
     def get_file_size(self, file_path: Union[str, Path]) -> int:
-        """!
-        @brief Gets the size of a file in bytes.
-        @param file_path: The path to the file.
-        @return The size of the file in bytes.
-        @raises ValidationError: If the file is not found.
+        """Gets the size of a file in bytes.
+
+        Args:
+            file_path (Union[str, Path]): The path to the file.
+
+        Raises:
+            ValidationError: If the file is not found.
+
+        Returns:
+            int: The size of the file in bytes.
         """
         try:
             return os.path.getsize(file_path)
@@ -100,28 +118,37 @@ class PathManager:
             raise ValidationError(f"File not found: {file_path}") from e
 
     def is_directory_writable(self, directory_path: Union[str, Path]) -> bool:
-        """!
-        @brief Checks if a directory is writable.
-        @param directory_path: The path to the directory.
-        @return True if the directory is writable, False otherwise.
+        """Checks if a directory is writable.
+
+        Args:
+            directory_path (Union[str, Path]): The path to the directory.
+
+        Returns:
+            bool: True if the directory is writable, False otherwise.
         """
         return os.access(directory_path, os.W_OK)
 
     def get_relative_path(self, path: Union[str, Path], base_path: Union[str, Path]) -> Path:
-        """!
-        @brief Gets the relative path from a base path.
-        @param path: The path to make relative.
-        @param base_path: The base path.
-        @return The relative path.
+        """Gets the relative path from a base path.
+
+        Args:
+            path (Union[str, Path]): The path to make relative.
+            base_path (Union[str, Path]): The base path.
+
+        Returns:
+            Path: The relative path.
         """
         return Path(os.path.relpath(path, base_path))
 
     def safe_copy_file(self, source: Union[str, Path], destination: Union[str, Path]) -> None:
-        """!
-        @brief Safely copies a file with error handling and logging.
-        @param source: The source file path.
-        @param destination: The destination file path.
-        @raises ValidationError: If the copy operation fails.
+        """Safely copies a file with error handling and logging.
+
+        Args:
+            source (Union[str, Path]): The source file path.
+            destination (Union[str, Path]): The destination file path.
+
+        Raises:
+            ValidationError: If the copy operation fails.
         """
         try:
             shutil.copy2(source, destination)
@@ -130,11 +157,14 @@ class PathManager:
             raise ValidationError(f"Failed to copy file from {source} to {destination}") from e
 
     def safe_move_file(self, source: Union[str, Path], destination: Union[str, Path]) -> None:
-        """!
-        @brief Safely moves a file with error handling and logging.
-        @param source: The source file path.
-        @param destination: The destination file path.
-        @raises ValidationError: If the move operation fails.
+        """Safely moves a file with error handling and logging.
+
+        Args:
+            source (Union[str, Path]): The source file path.
+            destination (Union[str, Path]): The destination file path.
+
+        Raises:
+            ValidationError: If the move operation fails.
         """
         try:
             shutil.move(str(source), str(destination))
@@ -143,10 +173,13 @@ class PathManager:
             raise ValidationError(f"Failed to move file from {source} to {destination}") from e
 
     def get_case_metadata(self, case_path: Path) -> Dict[str, Any]:
-        """!
-        @brief Extracts metadata from a case directory.
-        @param case_path: The path to the case directory.
-        @return A dictionary containing metadata about the case directory.
+        """Extracts metadata from a case directory.
+
+        Args:
+            case_path (Path): The path to the case directory.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing metadata about the case directory.
         """
         total_files = 0
         total_size = 0
@@ -158,11 +191,12 @@ class PathManager:
         return {"file_count": total_files, "total_size_bytes": total_size}
 
     def _log_path_operation(self, operation: str, path: Union[str, Path], success: bool = True) -> None:
-        """!
-        @brief Logs a path operation for debugging and auditing.
-        @param operation: The name of the operation.
-        @param path: The path involved in the operation.
-        @param success: Whether the operation was successful.
+        """Logs a path operation for debugging and auditing.
+
+        Args:
+            operation (str): The name of the operation.
+            path (Union[str, Path]): The path involved in the operation.
+            success (bool, optional): Whether the operation was successful. Defaults to True.
         """
         if self.logger:
             self.logger.debug("Path operation", {

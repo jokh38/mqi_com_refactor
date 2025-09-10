@@ -2,10 +2,7 @@
 # Target File: src/domain/models.py
 # Source Reference: Data structures from various original files
 # =====================================================================================
-"""!
-@file models.py
-@brief Defines Data Transfer Objects (DTOs) for the application's domain models.
-"""
+"""Defines Data Transfer Objects (DTOs) for the application's domain models."""
 
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
@@ -16,9 +13,7 @@ from src.domain.enums import CaseStatus, GpuStatus, WorkflowStep, BeamStatus
 
 @dataclass
 class CaseData:
-    """!
-    @brief Data Transfer Object for case information.
-    """
+    """Data Transfer Object for case information."""
     case_id: str
     case_path: Path
     status: CaseStatus
@@ -30,9 +25,7 @@ class CaseData:
 
 @dataclass
 class BeamData:
-    """!
-    @brief Data Transfer Object for beam information.
-    """
+    """Data Transfer Object for beam information."""
     beam_id: str
     parent_case_id: str
     beam_path: Path
@@ -43,9 +36,7 @@ class BeamData:
 
 @dataclass
 class GpuResource:
-    """!
-    @brief Data Transfer Object for GPU resource information.
-    """
+    """Data Transfer Object for GPU resource information."""
     uuid: str
     name: str
     memory_total: int
@@ -59,9 +50,7 @@ class GpuResource:
 
 @dataclass
 class WorkflowStepRecord:
-    """!
-    @brief Data Transfer Object for workflow step tracking.
-    """
+    """Data Transfer Object for workflow step tracking."""
     case_id: str
     step: WorkflowStep
     status: str
@@ -72,9 +61,7 @@ class WorkflowStepRecord:
 
 @dataclass
 class SystemStats:
-    """!
-    @brief Data Transfer Object for system statistics.
-    """
+    """Data Transfer Object for system statistics."""
     total_cases: int
     active_cases: int
     completed_cases: int

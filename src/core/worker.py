@@ -2,13 +2,9 @@
 # Target File: src/core/worker.py
 # Source Reference: src/worker.py, src/main.py
 # =====================================================================================
-"""!
-@file worker.py
-@brief Main entry point for a worker process that handles a single beam.
-"""
+"""Main entry point for a worker process that handles a single beam."""
 
 from pathlib import Path
-from typing import Any, Dict
 
 from src.database.connection import DatabaseConnection
 from src.repositories.case_repo import CaseRepository
@@ -18,20 +14,21 @@ from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
 from src.infrastructure.process_manager import CommandExecutor
 from src.utils.retry_policy import RetryPolicy
-from src.infrastructure.gpu_monitor import GpuMonitor
 from src.core.workflow_manager import WorkflowManager
 from src.core.tps_generator import TpsGenerator
-from src.config.settings import Settings, DatabaseConfig, HandlerConfig, LoggingConfig
+from src.config.settings import Settings
 
 
 def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
-    """!
-    @brief Acts as the "assembly line" that creates all dependency objects for a single beam
-           and injects them into the WorkflowManager to start the process.
-    @details This function is executed by a worker process for each beam.
-    @param beam_id: Unique identifier for the beam.
-    @param beam_path: Path to the beam directory.
-    @param settings: Settings object containing all configuration.
+    """Acts as the "assembly line" that creates all dependency objects for a single beam
+    and injects them into the WorkflowManager to start the process.
+
+    This function is executed by a worker process for each beam.
+
+    Args:
+        beam_id (str): Unique identifier for the beam.
+        beam_path (Path): Path to the beam directory.
+        settings (Settings): Settings object containing all configuration.
     """
     logger = StructuredLogger(f"worker_{beam_id}", config=settings.logging)
 
@@ -53,12 +50,13 @@ def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
         gpu_repo = GpuRepository(db_connection, logger)
 
         # Create handler dependencies
-        command_executor = CommandExecutor(logger, settings.processing.local_execution_timeout_seconds)
+        command_executor = CommandExecutor(
+            logger, settings.processing.local_execution_timeout_seconds)
         retry_policy = RetryPolicy(logger=logger)
 
-        local_handler = LocalHandler(settings, logger, command_executor, retry_policy)
+        local_handler = LocalHandler(settings, logger, command_executor,
+                                     retry_policy)
         remote_handler = RemoteHandler(settings, logger, retry_policy)
-        
         # Create TPS generator
         tps_generator = TpsGenerator(settings, logger)
 
@@ -76,7 +74,11 @@ def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
         workflow_manager.run_workflow()
 
     except Exception as e:
-        logger.error(f"Worker failed for beam {beam_id}", {"error": str(e), "error_type": type(e).__name__})
+        logger.error(
+            f"Worker failed for beam {beam_id}", {
+                "error": str(e),
+                "error_type": type(e).__name__
+            })
         # Optionally re-raise or handle specific exceptions
         raise
     finally:
@@ -86,17 +88,20 @@ def worker_main(beam_id: str, beam_path: Path, settings: Settings) -> None:
 
 
 def _validate_beam_path(beam_path: Path, logger: StructuredLogger) -> None:
-    """!
-    @brief Performs 'Fail-Fast' validation of the beam path.
-    @param beam_path: Path to validate.
-    @param logger: Logger instance for error reporting.
-    @raises ValueError: If the path is invalid or inaccessible.
+    """Performs 'Fail-Fast' validation of the beam path.
+
+    Args:
+        beam_path (Path): Path to validate.
+        logger (StructuredLogger): Logger instance for error reporting.
+
+    Raises:
+        ValueError: If the path is invalid or inaccessible.
     """
     if not beam_path.exists():
-        logger.error(f"Validation failed: Beam path does not exist: {beam_path}")
+        logger.error(
+            f"Validation failed: Beam path does not exist: {beam_path}")
         raise ValueError(f"Beam path does not exist: {beam_path}")
     if not beam_path.is_dir():
-        logger.error(f"Validation failed: Beam path is not a directory: {beam_path}")
+        logger.error(
+            f"Validation failed: Beam path is not a directory: {beam_path}")
         raise ValueError(f"Beam path is not a directory: {beam_path}")
-
-

@@ -2,10 +2,7 @@
 # Target File: src/infrastructure/ui_process_manager.py
 # Source Reference: jsons/display_process_manager.json
 # =====================================================================================
-"""!
-@file ui_process_manager.py
-@brief Manages the UI subprocess lifecycle, handling its creation, monitoring, and termination.
-"""
+"""Manages the UI subprocess lifecycle, handling its creation, monitoring, and termination."""
 
 import subprocess
 import sys
@@ -19,19 +16,20 @@ from src.config.settings import Settings
 
 
 class UIProcessManager:
-    """!
-    @brief A professional manager for the UI subprocess lifecycle, handling its creation,
-           monitoring, and clean termination with separate console window support.
-    @details This class is responsible for launching and managing the UI as a separate process
-             with proper console window handling on Windows systems.
+    """A professional manager for the UI subprocess lifecycle, handling its creation,
+    monitoring, and clean termination with separate console window support.
+
+    This class is responsible for launching and managing the UI as a separate process
+    with proper console window handling on Windows systems.
     """
     
     def __init__(self, database_path: str, config: Settings, logger: StructuredLogger):
-        """!
-        @brief Initializes the UIProcessManager.
-        @param database_path: The resolved path to the SQLite database file.
-        @param config: The application configuration object.
-        @param logger: A logger instance for status messages.
+        """Initializes the UIProcessManager.
+
+        Args:
+            database_path (str): The resolved path to the SQLite database file.
+            config (Settings): The application configuration object.
+            logger (StructuredLogger): A logger instance for status messages.
         """
         self.database_path = database_path
         self.config = config
@@ -41,10 +39,12 @@ class UIProcessManager:
         self._is_running = False
     
     def start(self) -> bool:
-        """!
-        @brief Starts the UI as an independent process.
-        @details Creates a new console window on Windows systems as per original behavior.
-        @return True if the process started successfully, False otherwise.
+        """Starts the UI as an independent process.
+
+        Creates a new console window on Windows systems as per original behavior.
+
+        Returns:
+            bool: True if the process started successfully, False otherwise.
         """
         if self._is_running:
             if self.logger:
@@ -96,10 +96,13 @@ class UIProcessManager:
             return False
     
     def stop(self, timeout: float = 10.0) -> bool:
-        """!
-        @brief Stops the UI process gracefully, with a specified timeout.
-        @param timeout: The maximum time to wait for graceful shutdown.
-        @return True if the process stopped successfully, False otherwise.
+        """Stops the UI process gracefully, with a specified timeout.
+
+        Args:
+            timeout (float, optional): The maximum time to wait for graceful shutdown. Defaults to 10.0.
+
+        Returns:
+            bool: True if the process stopped successfully, False otherwise.
         """
         if not self._is_running or not self._process:
             return True
@@ -132,9 +135,10 @@ class UIProcessManager:
             return False
     
     def is_running(self) -> bool:
-        """!
-        @brief Checks if the UI process is currently running.
-        @return True if the process is running, False otherwise.
+        """Checks if the UI process is currently running.
+
+        Returns:
+            bool: True if the process is running, False otherwise.
         """
         if not self._process or not self._is_running:
             return False
@@ -152,9 +156,10 @@ class UIProcessManager:
         return True
     
     def get_process_info(self) -> Dict[str, Any]:
-        """!
-        @brief Returns a dictionary with information about the managed process.
-        @return A dictionary containing process information.
+        """Returns a dictionary with information about the managed process.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing process information.
         """
         if not self._process:
             return {
@@ -171,9 +176,10 @@ class UIProcessManager:
         }
     
     def restart(self) -> bool:
-        """!
-        @brief Restarts the UI process.
-        @return True if the restart was successful, False otherwise.
+        """Restarts the UI process.
+
+        Returns:
+            bool: True if the restart was successful, False otherwise.
         """
         if self.logger:
             self.logger.info("Restarting UI process")
@@ -191,9 +197,10 @@ class UIProcessManager:
         return self.start()
     
     def _get_ui_command(self) -> list[str]:
-        """!
-        @brief Constructs the command to launch the UI process.
-        @return A list of command arguments.
+        """Constructs the command to launch the UI process.
+
+        Returns:
+            list[str]: A list of command arguments.
         """
         return [
             sys.executable,
@@ -202,9 +209,10 @@ class UIProcessManager:
         ]
     
     def _get_process_creation_flags(self) -> int:
-        """!
-        @brief Gets the appropriate process creation flags based on the platform.
-        @return The process creation flags.
+        """Gets the appropriate process creation flags based on the platform.
+
+        Returns:
+            int: The process creation flags.
         """
         if platform.system() == "Windows":
             # CREATE_NEW_CONSOLE flag to open a new console window

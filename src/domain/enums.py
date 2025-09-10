@@ -2,17 +2,13 @@
 # Target File: src/domain/enums.py
 # Source Reference: src/states.py
 # =====================================================================================
-"""!
-@file enums.py
-@brief Defines enumerations for statuses and modes used throughout the application.
-"""
+"""Defines enumerations for statuses and modes used throughout the application."""
 
-from enum import Enum, auto
+from enum import Enum
+
 
 class CaseStatus(Enum):
-    """!
-    @brief Enumeration of possible case statuses.
-    """
+    """Enumeration of possible case statuses."""
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
     PROCESSING = "processing"
@@ -21,10 +17,11 @@ class CaseStatus(Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
 
+
 class BeamStatus(Enum):
-    """!
-    @brief Enumeration of possible beam statuses.
-    @details Mirrors CaseStatus but is specific to a beam's lifecycle.
+    """Enumeration of possible beam statuses.
+
+    Mirrors CaseStatus but is specific to a beam's lifecycle.
     """
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
@@ -36,10 +33,9 @@ class BeamStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class WorkflowStep(Enum):
-    """!
-    @brief Enumeration of workflow steps.
-    """
+    """Enumeration of workflow steps."""
     PENDING = "pending"
     PREPROCESSING = "preprocessing"
     TPS_GENERATION = "tps_generation"
@@ -49,19 +45,17 @@ class WorkflowStep(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
+
 class GpuStatus(Enum):
-    """!
-    @brief Enumeration of GPU resource statuses.
-    """
+    """Enumeration of GPU resource statuses."""
     IDLE = "idle"
     BUSY = "busy"
     ASSIGNED = "assigned"
     UNAVAILABLE = "unavailable"
 
+
 class ProcessingMode(Enum):
-    """!
-    @brief Enumeration of processing modes.
-    """
+    """Enumeration of processing modes."""
     LOCAL = "local"
     REMOTE = "remote"
     HYBRID = "hybrid"

@@ -2,10 +2,7 @@
 # Target File: src/ui/formatter.py
 # Source Reference: src/display_handler.py
 # =====================================================================================
-"""!
-@file formatter.py
-@brief Contains helper functions for formatting data for the UI.
-"""
+"""Contains helper functions for formatting data for the UI."""
 
 from typing import Dict, Any
 from datetime import timedelta
@@ -32,40 +29,52 @@ GPU_STATUS_COLORS = {
 
 
 def get_case_status_text(status: CaseStatus) -> Text:
-    """!
-    @brief Returns a rich Text object for a case status.
-    @param status: The case status.
-    @return A `rich` Text object with appropriate color.
+    """Returns a rich Text object for a case status.
+
+    Args:
+        status (CaseStatus): The case status.
+
+    Returns:
+        Text: A `rich` Text object with appropriate color.
     """
     color = CASE_STATUS_COLORS.get(status, "white")
     return Text(status.value.upper(), style=color)
 
 
 def get_gpu_status_text(status: GpuStatus) -> Text:
-    """!
-    @brief Returns a rich Text object for a GPU status.
-    @param status: The GPU status.
-    @return A `rich` Text object with appropriate color.
+    """Returns a rich Text object for a GPU status.
+
+    Args:
+        status (GpuStatus): The GPU status.
+
+    Returns:
+        Text: A `rich` Text object with appropriate color.
     """
     color = GPU_STATUS_COLORS.get(status, "white")
     return Text(status.value.upper(), style=color)
 
 
 def format_memory_usage(used_mb: int, total_mb: int) -> Text:
-    """!
-    @brief Formats memory usage like '1024 / 4096 MB'.
-    @param used_mb: The used memory in MB.
-    @param total_mb: The total memory in MB.
-    @return A `rich` Text object.
+    """Formats memory usage like '1024 / 4096 MB'.
+
+    Args:
+        used_mb (int): The used memory in MB.
+        total_mb (int): The total memory in MB.
+
+    Returns:
+        Text: A `rich` Text object.
     """
     return Text(f"{used_mb} / {total_mb} MB", style="white")
 
 
 def format_utilization(utilization: int) -> Text:
-    """!
-    @brief Formats utilization with a color based on value.
-    @param utilization: The utilization percentage.
-    @return A `rich` Text object with appropriate color.
+    """Formats utilization with a color based on value.
+
+    Args:
+        utilization (int): The utilization percentage.
+
+    Returns:
+        Text: A `rich` Text object with appropriate color.
     """
     color = "green"
     if utilization > 70:
@@ -76,10 +85,13 @@ def format_utilization(utilization: int) -> Text:
 
 
 def format_temperature(temp: int) -> Text:
-    """!
-    @brief Formats temperature with a color based on value.
-    @param temp: The temperature in Celsius.
-    @return A `rich` Text object with appropriate color.
+    """Formats temperature with a color based on value.
+
+    Args:
+        temp (int): The temperature in Celsius.
+
+    Returns:
+        Text: A `rich` Text object with appropriate color.
     """
     color = "green"
     if temp > 75:
@@ -90,11 +102,14 @@ def format_temperature(temp: int) -> Text:
 
 
 def format_progress_bar(progress: float, width: int = 20) -> Text:
-    """!
-    @brief Creates a text-based progress bar.
-    @param progress: The progress percentage (0-100).
-    @param width: The width of the progress bar.
-    @return A `rich` Text object representing the progress bar.
+    """Creates a text-based progress bar.
+
+    Args:
+        progress (float): The progress percentage (0-100).
+        width (int, optional): The width of the progress bar. Defaults to 20.
+
+    Returns:
+        Text: A `rich` Text object representing the progress bar.
     """
     if progress is None:
         progress = 0.0
@@ -113,10 +128,13 @@ def format_progress_bar(progress: float, width: int = 20) -> Text:
 
 
 def format_elapsed_time(seconds: float) -> str:
-    """!
-    @brief Formats elapsed seconds into a human-readable string like '1h 15m 30s'.
-    @param seconds: The elapsed time in seconds.
-    @return A formatted string.
+    """Formats elapsed seconds into a human-readable string like '1h 15m 30s'.
+
+    Args:
+        seconds (float): The elapsed time in seconds.
+
+    Returns:
+        str: A formatted string.
     """
     if seconds is None:
         return "N/A"
