@@ -2,10 +2,7 @@
 # Target File: src/infrastructure/logging_handler.py
 # Source Reference: src/logging_handler.py
 # =====================================================================================
-"""!
-@file logging_handler.py
-@brief Provides structured logging capabilities and a logger factory.
-"""
+"""Provides structured logging capabilities and a logger factory."""
 
 import logging
 import json
@@ -18,15 +15,14 @@ from logging.handlers import RotatingFileHandler
 from src.config.settings import LoggingConfig
 
 class StructuredLogger:
-    """!
-    @brief Provides structured logging capabilities with JSON formatting and context management.
-    """
+    """Provides structured logging capabilities with JSON formatting and context management."""
     
     def __init__(self, name: str, config: LoggingConfig):
-        """!
-        @brief Initialize structured logger with configuration.
-        @param name: The logger name (usually the module name).
-        @param config: The logging configuration settings.
+        """Initialize structured logger with configuration.
+
+        Args:
+            name (str): The logger name (usually the module name).
+            config (LoggingConfig): The logging configuration settings.
         """
         self.config = config
         self.logger = logging.getLogger(name)
@@ -37,9 +33,7 @@ class StructuredLogger:
             self._setup_handlers()
     
     def _setup_handlers(self) -> None:
-        """!
-        @brief Setup file and console handlers with appropriate formatting.
-        """
+        """Setup file and console handlers with appropriate formatting."""
         
         # Ensure log directory exists
         self.config.log_dir.mkdir(parents=True, exist_ok=True)
@@ -70,9 +64,10 @@ class StructuredLogger:
         self.logger.addHandler(console_handler)
     
     def _create_json_formatter(self):
-        """!
-        @brief Create a JSON formatter for structured logging.
-        @return A logging.Formatter instance that formats logs as JSON.
+        """Create a JSON formatter for structured logging.
+
+        Returns:
+            logging.Formatter: A logging.Formatter instance that formats logs as JSON.
         """
         
         class JsonFormatter(logging.Formatter):
@@ -100,12 +95,13 @@ class StructuredLogger:
         return JsonFormatter()
     
     def _log_with_context(self, level: int, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log a message with structured context.
-        @param level: The logging level.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log a message with structured context.
+
+        Args:
+            level (int): The logging level.
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         extra = {}
         if context and self.config.structured_logging:
@@ -114,73 +110,82 @@ class StructuredLogger:
         self.logger.log(level, message, extra=extra, exc_info=exc_info)
     
     def debug(self, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log a debug message with optional context.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log a debug message with optional context.
+
+        Args:
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         self._log_with_context(logging.DEBUG, message, context, exc_info=exc_info)
     
     def info(self, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log an info message with optional context.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log an info message with optional context.
+
+        Args:
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         self._log_with_context(logging.INFO, message, context, exc_info=exc_info)
     
     def warning(self, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log a warning message with optional context.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log a warning message with optional context.
+
+        Args:
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         self._log_with_context(logging.WARNING, message, context, exc_info=exc_info)
     
     def error(self, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log an error message with optional context.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log an error message with optional context.
+
+        Args:
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         self._log_with_context(logging.ERROR, message, context, exc_info=exc_info)
     
     def critical(self, message: str, context: Dict[str, Any] = None, exc_info=False):
-        """!
-        @brief Log a critical message with optional context.
-        @param message: The log message.
-        @param context: An optional dictionary of context data.
-        @param exc_info: Whether to include exception information.
+        """Log a critical message with optional context.
+
+        Args:
+            message (str): The log message.
+            context (Dict[str, Any], optional): An optional dictionary of context data. Defaults to None.
+            exc_info (bool, optional): Whether to include exception information. Defaults to False.
         """
         self._log_with_context(logging.CRITICAL, message, context, exc_info=exc_info)
 
 class LoggerFactory:
-    """!
-    @brief Factory for creating configured logger instances.
-    """
+    """Factory for creating configured logger instances."""
     
     _config: Optional[LoggingConfig] = None
     _loggers: Dict[str, StructuredLogger] = {}
     
     @classmethod
     def configure(cls, config: LoggingConfig):
-        """!
-        @brief Configure the logger factory with settings.
-        @param config: The logging configuration settings.
+        """Configure the logger factory with settings.
+
+        Args:
+            config (LoggingConfig): The logging configuration settings.
         """
         cls._config = config
     
     @classmethod
     def get_logger(cls, name: str) -> StructuredLogger:
-        """!
-        @brief Get or create a logger instance.
-        @param name: The name of the logger.
-        @return A configured StructuredLogger instance.
-        @raises RuntimeError: If the factory has not been configured.
+        """Get or create a logger instance.
+
+        Args:
+            name (str): The name of the logger.
+
+        Raises:
+            RuntimeError: If the factory has not been configured.
+
+        Returns:
+            StructuredLogger: A configured StructuredLogger instance.
         """
         if not cls._config:
             raise RuntimeError("LoggerFactory must be configured before use")

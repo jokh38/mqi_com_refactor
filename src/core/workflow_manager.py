@@ -2,10 +2,7 @@
 # Target File: src/core/workflow_manager.py
 # Source Reference: src/workflow_manager.py, src/worker.py
 # =====================================================================================
-"""!
-@file workflow_manager.py
-@brief Manages and orchestrates the entire workflow for a case using a state pattern.
-"""
+"""Manages and orchestrates the entire workflow for a case using a state pattern."""
 
 from typing import Optional, Any, Dict
 from pathlib import Path
@@ -16,15 +13,15 @@ from src.handlers.local_handler import LocalHandler
 from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
 from src.core.tps_generator import TpsGenerator
-from src.domain.enums import CaseStatus, BeamStatus
+from src.domain.enums import BeamStatus
 from src.domain.states import WorkflowState, InitialState
 
 
 class WorkflowManager:
-    """!
-    @brief Manages and orchestrates the entire workflow for a case according to the State pattern.
-    @details This class is responsible for executing each `State` and transitioning to the next,
-             using the injected `repositories` and `handlers`.
+    """Manages and orchestrates the entire workflow for a case according to the State pattern.
+
+    This class is responsible for executing each `State` and transitioning to the next,
+    using the injected `repositories` and `handlers`.
     """
 
     def __init__(
@@ -38,16 +35,17 @@ class WorkflowManager:
         id: str,
         path: Path,
     ):
-        """!
-        @brief Initializes the workflow manager with all required dependencies.
-        @param case_repo: The case repository for database access.
-        @param gpu_repo: The GPU repository for database access.
-        @param local_handler: The handler for local command execution.
-        @param remote_handler: The handler for remote command execution.
-        @param tps_generator: The TPS generator service.
-        @param logger: The structured logger.
-        @param id: The unique identifier for the case or beam.
-        @param path: The path to the case or beam directory.
+        """Initializes the workflow manager with all required dependencies.
+
+        Args:
+            case_repo (CaseRepository): The case repository for database access.
+            gpu_repo (GpuRepository): The GPU repository for database access.
+            local_handler (LocalHandler): The handler for local command execution.
+            remote_handler (RemoteHandler): The handler for remote command execution.
+            tps_generator (TpsGenerator): The TPS generator service.
+            logger (StructuredLogger): The structured logger.
+            id (str): The unique identifier for the case or beam.
+            path (Path): The path to the case or beam directory.
         """
         self.case_repo = case_repo
         self.gpu_repo = gpu_repo
@@ -61,9 +59,7 @@ class WorkflowManager:
         self.shared_context: Dict[str, Any] = {}
 
     def run_workflow(self) -> None:
-        """!
-        @brief Executes the complete workflow by managing state transitions.
-        """
+        """Executes the complete workflow by managing state transitions."""
         self.logger.info(f"Starting workflow for: {self.id}")
 
         while self.current_state:
@@ -80,33 +76,37 @@ class WorkflowManager:
         self.logger.info(f"Workflow finished for: {self.id}")
 
     def _transition_to_next_state(self, next_state: WorkflowState) -> None:
-        """!
-        @brief Handles the transition from the current state to the next state.
-        @param next_state: The next state in the workflow.
+        """Handles the transition from the current state to the next state.
+
+        Args:
+            next_state (WorkflowState): The next state in the workflow.
         """
         if next_state:
-            self.logger.info(f"Transitioning from {self.current_state.get_state_name()} to {next_state.get_state_name()}")
+            self.logger.info(
+                f"Transitioning from {self.current_state.get_state_name()} to {next_state.get_state_name()}"
+            )
         else:
-            self.logger.info(f"Transitioning from {self.current_state.get_state_name()} to None (workflow end)")
+            self.logger.info(
+                f"Transitioning from {self.current_state.get_state_name()} to None (workflow end)"
+            )
 
         self.current_state = next_state
 
     def _handle_workflow_error(self, error: Exception, context: str) -> None:
-        """!
-        @brief Handles errors that occur during workflow execution.
-        @param error: The exception that occurred.
-        @param context: A string describing the context in which the error occurred.
+        """Handles errors that occur during workflow execution.
+
+        Args:
+            error (Exception): The exception that occurred.
+            context (str): A string describing the context in which the error occurred.
         """
-        self.logger.error(
-            "Workflow error occurred",
-            {
-                "id": self.id,
-                "context": context,
-                "error": str(error),
-                "error_type": type(error).__name__,
-                "current_state": self.current_state.get_state_name() if self.current_state else "None"
-            }
-        )
+        self.logger.error("Workflow error occurred", {
+            "id": self.id,
+            "context": context,
+            "error": str(error),
+            "error_type": type(error).__name__,
+            "current_state":
+            self.current_state.get_state_name() if self.current_state else "None"
+        })
 
         try:
             # This logic is now beam-specific. The calling state should handle status updates.
@@ -119,12 +119,9 @@ class WorkflowManager:
             )
             self.logger.info(f"Beam status updated to FAILED for: {self.id}")
         except Exception as db_error:
-            self.logger.error(
-                "Failed to update status during error handling",
-                {
-                    "id": self.id,
-                    "db_error": str(db_error)
-                }
-            )
+            self.logger.error("Failed to update status during error handling", {
+                "id": self.id,
+                "db_error": str(db_error)
+            })
 
-        self.current_state = None # Stop the workflow
+        self.current_state = None  # Stop the workflow

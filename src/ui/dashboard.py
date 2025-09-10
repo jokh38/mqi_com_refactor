@@ -4,11 +4,10 @@
 # Purpose: UI Process Entry Point - Serves as the entry point for the UI process
 # =====================================================================================
 
-"""!
-@file dashboard.py
-@brief UI Process Entry Point for the MQI Communicator Dashboard.
-@details This script initializes all necessary components and starts the display
-         manager in its own process space.
+"""UI Process Entry Point for the MQI Communicator Dashboard.
+
+This script initializes all necessary components and starts the display
+manager in its own process space.
 """
 
 import sys
@@ -27,16 +26,17 @@ from src.ui.display import DisplayManager
 
 
 class DashboardProcess:
-    """!
-    @brief Main dashboard process controller.
-    @details This class is responsible for initializing and managing the UI components
-             in a separate process.
+    """Main dashboard process controller.
+
+    This class is responsible for initializing and managing the UI components
+    in a separate process.
     """
     
     def __init__(self, database_path: str):
-        """!
-        @brief Initialize the dashboard process.
-        @param database_path: The path to the SQLite database file.
+        """Initialize the dashboard process.
+
+        Args:
+            database_path (str): The path to the SQLite database file.
         """
         self.database_path = database_path
         self.logger: StructuredLogger = None
@@ -44,9 +44,7 @@ class DashboardProcess:
         self.running = False
         
     def initialize_logging(self) -> None:
-        """!
-        @brief Initialize logging for the UI process.
-        """
+        """Initialize logging for the UI process."""
         try:
             # Use default settings for UI process logging
             settings = Settings()
@@ -62,9 +60,10 @@ class DashboardProcess:
             sys.exit(1)
     
     def setup_database_components(self) -> tuple[CaseRepository, GpuRepository]:
-        """!
-        @brief Setup the database connection and repositories.
-        @return A tuple containing the case and GPU repositories.
+        """Setup the database connection and repositories.
+
+        Returns:
+            tuple[CaseRepository, GpuRepository]: A tuple containing the case and GPU repositories.
         """
         try:
             # Use default settings for database connection
@@ -87,9 +86,7 @@ class DashboardProcess:
             sys.exit(1)
     
     def start_display(self) -> None:
-        """!
-        @brief Start the display manager.
-        """
+        """Start the display manager."""
         try:
             # Setup database components
             case_repo, gpu_repo = self.setup_database_components()
@@ -109,9 +106,7 @@ class DashboardProcess:
             sys.exit(1)
     
     def stop_display(self) -> None:
-        """!
-        @brief Stop the display manager.
-        """
+        """Stop the display manager."""
         if self.display_manager and self.running:
             self.logger.info("Stopping dashboard display")
             self.display_manager.stop()
@@ -119,9 +114,7 @@ class DashboardProcess:
             self.logger.info("Dashboard display stopped")
     
     def run(self) -> NoReturn:
-        """!
-        @brief The main run loop for the dashboard process.
-        """
+        """The main run loop for the dashboard process."""
         try:
             # Initialize components
             self.initialize_logging()
@@ -147,9 +140,7 @@ class DashboardProcess:
             self.cleanup()
     
     def cleanup(self) -> None:
-        """!
-        @brief Clean up resources.
-        """
+        """Clean up resources."""
         try:
             self.stop_display()
             if self.logger:
@@ -159,9 +150,10 @@ class DashboardProcess:
 
 
 def setup_signal_handlers(dashboard: DashboardProcess) -> None:
-    """!
-    @brief Setup signal handlers for graceful shutdown.
-    @param dashboard: The DashboardProcess instance to shut down.
+    """Setup signal handlers for graceful shutdown.
+
+    Args:
+        dashboard (DashboardProcess): The DashboardProcess instance to shut down.
     """
     def signal_handler(signum, frame):
         print(f"\\nReceived signal {signum}, shutting down dashboard...")
@@ -172,9 +164,7 @@ def setup_signal_handlers(dashboard: DashboardProcess) -> None:
 
 
 def main() -> NoReturn:
-    """!
-    @brief The main entry point for the dashboard process.
-    """
+    """The main entry point for the dashboard process."""
     if len(sys.argv) != 2:
         print("Usage: python -m src.ui.dashboard <database_path>")
         sys.exit(1)

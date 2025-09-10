@@ -3,21 +3,18 @@
 # Source Reference: Constants scattered throughout original codebase
 # =====================================================================================
 
-"""!
-@file constants.py
-@brief Defines developer-managed constants for the application.
-@details These constants are fixed values that are not meant to be configured
-         by users. They represent hardcoded application behavior and data
-         structures.
-"""
+"""Defines developer-managed constants for the application.
 
-from pathlib import Path
+These constants are fixed values that are not meant to be configured
+by users. They represent hardcoded application behavior and data
+structures.
+"""
 
 # ===== DATABASE SCHEMA CONSTANTS =====
 # These define the application's data structure
 DB_SCHEMA_VERSION = "1.0"
 CASES_TABLE_NAME = "cases"
-GPU_RESOURCES_TABLE_NAME = "gpu_resources" 
+GPU_RESOURCES_TABLE_NAME = "gpu_resources"
 WORKFLOW_HISTORY_TABLE_NAME = "workflow_history"
 
 # ===== FILE SYSTEM CONSTANTS =====
@@ -36,7 +33,10 @@ REQUIRED_CASE_FILES = [
 
 # ===== COMMAND TEMPLATES =====
 # Fixed command patterns used throughout the application
-NVIDIA_SMI_QUERY_COMMAND = "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,memory.total,temperature.gpu --format=csv,noheader,nounits"
+NVIDIA_SMI_QUERY_COMMAND = (
+    "nvidia-smi --query-gpu=index,uuid,utilization.gpu,memory.used,"
+    "memory.total,temperature.gpu --format=csv,noheader,nounits"
+)
 PUEUE_STATUS_COMMAND = "pueue status --json"
 PUEUE_ADD_COMMAND_TEMPLATE = "pueue add --group gpu{gpu_id} '{command}'"
 
@@ -44,7 +44,7 @@ PUEUE_ADD_COMMAND_TEMPLATE = "pueue add --group gpu{gpu_id} '{command}'"
 # Fixed workflow step identifiers (referenced in domain/states.py)
 WORKFLOW_STEPS = [
     "PENDING",
-    "PREPROCESSING", 
+    "PREPROCESSING",
     "TPS_GENERATION",
     "HPC_SUBMISSION",
     "SIMULATION_RUNNING",
@@ -64,7 +64,9 @@ CASE_ID_VALID_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234
 # Fixed error message templates with placeholders
 ERROR_MSG_CASE_NOT_FOUND = "Case '{case_id}' not found in database"
 ERROR_MSG_GPU_NOT_AVAILABLE = "No available GPU found for case '{case_id}'"
-ERROR_MSG_INVALID_CASE_PATH = "Invalid case path: '{path}' does not exist or is not accessible"
+ERROR_MSG_INVALID_CASE_PATH = (
+    "Invalid case path: '{path}' does not exist or is not accessible"
+)
 ERROR_MSG_TPS_GENERATION_FAILED = "TPS generation failed for case '{case_id}': {details}"
 
 # ===== UI DISPLAY CONSTANTS =====
@@ -77,7 +79,7 @@ PROGRESS_BAR_WIDTH = 20
 # Status color mappings (fixed application theme)
 STATUS_COLORS = {
     "PENDING": "yellow",
-    "RUNNING": "blue", 
+    "RUNNING": "blue",
     "COMPLETED": "green",
     "FAILED": "red",
     "CANCELLED": "orange"
@@ -93,7 +95,7 @@ MAX_ERROR_HISTORY_ENTRIES = 1000
 # Fixed parameter names expected by MOQUI TPS (cannot be changed)
 TPS_REQUIRED_PARAMS = [
     'GPUID',
-    'DicomDir', 
+    'DicomDir',
     'logFilePath',
     'OutputDir',
     'BeamNumbers'

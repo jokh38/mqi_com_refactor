@@ -2,10 +2,7 @@
 # Target File: src/database/connection.py
 # Source Reference: src/database_handler.py (connection and transaction management)
 # =====================================================================================
-"""!
-@file connection.py
-@brief Manages SQLite database connections, transactions, and schema initialization.
-"""
+"""Manages SQLite database connections, transactions, and schema initialization."""
 
 import sqlite3
 import threading
@@ -19,19 +16,20 @@ from src.infrastructure.logging_handler import StructuredLogger
 
 
 class DatabaseConnection:
-    """!
-    @brief Manages SQLite database connections, transactions, and schema initialization.
-    @details This class follows the Single Responsibility Principle by handling only
-             connection management and schema initialization. It provides thread-safe
-             transaction handling.
+    """Manages SQLite database connections, transactions, and schema initialization.
+
+    This class follows the Single Responsibility Principle by handling only
+    connection management and schema initialization. It provides thread-safe
+    transaction handling.
     """
 
     def __init__(self, db_path: Path, config: DatabaseConfig, logger: StructuredLogger):
-        """!
-        @brief Initializes the database connection manager.
-        @param db_path: Path to the SQLite database file.
-        @param config: Database configuration settings.
-        @param logger: Logger for recording database events.
+        """Initializes the database connection manager.
+
+        Args:
+            db_path (Path): Path to the SQLite database file.
+            config (DatabaseConfig): Database configuration settings.
+            logger (StructuredLogger): Logger for recording database events.
         """
         self.db_path = db_path
         self.config = config
@@ -46,9 +44,10 @@ class DatabaseConnection:
         self._connect()
 
     def _connect(self) -> None:
-        """!
-        @brief Establishes a connection to the SQLite database with configuration settings.
-        @raises DatabaseError: If the connection fails.
+        """Establishes a connection to the SQLite database with configuration settings.
+
+        Raises:
+            DatabaseError: If the connection fails.
         """
         try:
             self._conn = sqlite3.connect(
@@ -79,11 +78,16 @@ class DatabaseConnection:
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:
-        """!
-        @brief Context manager for handling database transactions with thread-safe locking.
-        @details This implementation is re-entrant and allows for nested transactions.
-        @yields The database connection for executing queries within the transaction.
-        @raises DatabaseError: If the database connection is not established.
+        """Context manager for handling database transactions with thread-safe locking.
+
+        This implementation is re-entrant and allows for nested transactions.
+
+        Yields:
+            Generator[sqlite3.Connection, None, None]: The database connection for
+            executing queries within the transaction.
+
+        Raises:
+            DatabaseError: If the database connection is not established.
         """
         with self._lock:
             if not self._conn:
@@ -108,9 +112,10 @@ class DatabaseConnection:
                 raise
 
     def init_db(self) -> None:
-        """!
-        @brief Initializes the database schema, creating all necessary tables and indexes.
-        @raises DatabaseError: If schema initialization fails.
+        """Initializes the database schema, creating all necessary tables and indexes.
+
+        Raises:
+            DatabaseError: If schema initialization fails.
         """
         try:
             with self.transaction() as conn:
@@ -213,9 +218,7 @@ class DatabaseConnection:
             raise DatabaseError(f"Failed to initialize database schema: {e}")
 
     def close(self) -> None:
-        """!
-        @brief Closes the database connection.
-        """
+        """Closes the database connection."""
         with self._lock:
             if self._conn:
                 self._conn.close()
@@ -224,10 +227,13 @@ class DatabaseConnection:
 
     @property
     def connection(self) -> sqlite3.Connection:
-        """!
-        @brief Provides access to the raw connection for repository classes.
-        @return The SQLite connection object.
-        @raises DatabaseError: If the database connection is not established.
+        """Provides access to the raw connection for repository classes.
+
+        Returns:
+            sqlite3.Connection: The SQLite connection object.
+
+        Raises:
+            DatabaseError: If the database connection is not established.
         """
         if not self._conn:
             raise DatabaseError("Database connection is not established")

@@ -2,10 +2,7 @@
 # Target File: src/ui/display.py
 # Source Reference: src/display_handler.py
 # =====================================================================================
-"""!
-@file display.py
-@brief Handles rendering the UI with the `rich` library.
-"""
+"""Handles rendering the UI with the `rich` library."""
 
 from typing import Optional
 import threading
@@ -25,18 +22,19 @@ import src.ui.formatter as formatter
 
 
 class DisplayManager:
-    """!
-    @brief Exclusively handles rendering the UI with the `rich` library, using data
-           received from the provider.
-    @details This class is responsible for pure UI rendering without any data fetching or business logic.
+    """Exclusively handles rendering the UI with the `rich` library, using data
+    received from the provider.
+
+    This class is responsible for pure UI rendering without any data fetching or business logic.
     """
 
     def __init__(self, provider: DashboardDataProvider, logger: StructuredLogger, refresh_rate: int = 2):
-        """!
-        @brief Initializes the display manager with an injected data provider.
-        @param provider: The data provider for the dashboard.
-        @param logger: The logger for recording operations.
-        @param refresh_rate: The refresh rate for the display in seconds.
+        """Initializes the display manager with an injected data provider.
+
+        Args:
+            provider (DashboardDataProvider): The data provider for the dashboard.
+            logger (StructuredLogger): The logger for recording operations.
+            refresh_rate (int, optional): The refresh rate for the display in seconds. Defaults to 2.
         """
         self.provider = provider
         self.logger = logger
@@ -48,9 +46,10 @@ class DisplayManager:
         self._refresh_rate = refresh_rate
 
     def _create_layout(self) -> Layout:
-        """!
-        @brief Creates and returns the main layout structure for the dashboard.
-        @return The main layout structure.
+        """Creates and returns the main layout structure for the dashboard.
+
+        Returns:
+            Layout: The main layout structure.
         """
         layout = Layout(name="root")
         layout.split(
@@ -63,9 +62,7 @@ class DisplayManager:
         return layout
 
     def start(self) -> None:
-        """!
-        @brief Starts the display update loop in a separate thread.
-        """
+        """Starts the display update loop in a separate thread."""
         if self.running:
             self.logger.warning("Display manager is already running.")
             return
@@ -79,9 +76,7 @@ class DisplayManager:
         self.logger.info("Display manager started.")
 
     def stop(self) -> None:
-        """!
-        @brief Stops the display update loop and cleans up resources.
-        """
+        """Stops the display update loop and cleans up resources."""
         if not self.running:
             return
 
@@ -94,9 +89,7 @@ class DisplayManager:
         self.logger.info("Display manager stopped.")
 
     def _update_loop(self) -> None:
-        """!
-        @brief The main update loop that runs in a separate thread.
-        """
+        """The main update loop that runs in a separate thread."""
         while self.running:
             try:
                 self.provider.refresh_all_data()
@@ -107,9 +100,7 @@ class DisplayManager:
                 time.sleep(5) # Wait longer after an error
 
     def update_display(self) -> None:
-        """!
-        @brief Updates the display with fresh data from the provider.
-        """
+        """Updates the display with fresh data from the provider."""
         # Header
         header_text = Text(f"MQI Communicator Dashboard - Last Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", justify="center")
         self.layout["header"].update(Panel(header_text, style="bold blue"))
@@ -134,10 +125,13 @@ class DisplayManager:
             self.live.refresh()
 
     def _create_system_stats_panel(self, stats_data: dict) -> Panel:
-        """!
-        @brief Creates a panel for system statistics.
-        @param stats_data: A dictionary of system statistics.
-        @return A `rich` Panel object.
+        """Creates a panel for system statistics.
+
+        Args:
+            stats_data (dict): A dictionary of system statistics.
+
+        Returns:
+            Panel: A `rich` Panel object.
         """
         table = Table(show_header=False, expand=True)
         table.add_column("Metric", style="cyan")
@@ -156,10 +150,13 @@ class DisplayManager:
         return Panel(table, title="[bold]System Status[/bold]", border_style="green")
 
     def _create_gpu_panel(self, gpu_data: list) -> Panel:
-        """!
-        @brief Creates a panel for GPU resources.
-        @param gpu_data: A list of GPU resource data.
-        @return A `rich` Panel object.
+        """Creates a panel for GPU resources.
+
+        Args:
+            gpu_data (list): A list of GPU resource data.
+
+        Returns:
+            Panel: A `rich` Panel object.
         """
         table = Table(expand=True)
         table.add_column("ID", style="dim", width=5)
@@ -181,10 +178,13 @@ class DisplayManager:
         return Panel(table, title="[bold]GPU Resources[/bold]", border_style="green")
 
     def _create_cases_panel(self, cases_data: list) -> Panel:
-        """!
-        @brief Creates a panel for active cases.
-        @param cases_data: A list of active case data.
-        @return A `rich` Panel object.
+        """Creates a panel for active cases.
+
+        Args:
+            cases_data (list): A list of active case data.
+
+        Returns:
+            Panel: A `rich` Panel object.
         """
         table = Table(expand=True)
         table.add_column("Case ID", style="cyan", no_wrap=True)
