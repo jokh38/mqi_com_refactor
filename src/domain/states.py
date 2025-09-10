@@ -134,7 +134,7 @@ class FileUploadState(WorkflowState):
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """Uploads moqui_tps.in and all *.csv files from the local beam directory to the HPC."""
+        """Uploads moqui_tps.in and all ``*.csv`` files from the local beam directory to the HPC."""
         context.logger.info("Uploading beam files to HPC", {"beam_id": context.id})
         context.case_repo.update_beam_status(context.id, BeamStatus.UPLOADING)
 

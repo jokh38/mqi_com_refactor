@@ -70,7 +70,7 @@ class ProcessManager:
             worker_func (Callable): The worker function to execute.
             case_id (str): The case identifier.
             case_path (Path): The path to the case directory.
-            **kwargs: Additional arguments for the worker function.
+            \*\*kwargs: Additional arguments for the worker function.
 
         Raises:
             RuntimeError: If the process manager is not started or is shutting down.

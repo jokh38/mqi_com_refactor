@@ -159,11 +159,13 @@ class RemoteHandler:
         remote_cwd: Optional[str] = None
     ) -> ExecutionResult:
         """Execute a command on the remote HPC system.
+
         Args:
             context_id (str): An identifier for the operation for logging purposes
             (e.g., beam_id, 'gpu_monitoring').
             command (str): The command to execute.
             remote_cwd (Optional[str]): The remote working directory (optional).
+
         Returns:
             ExecutionResult: An ExecutionResult containing the outcome of the execution.
         """
@@ -238,8 +240,10 @@ class RemoteHandler:
 
     def check_job_status(self, job_id: str) -> Dict[str, Any]:
         """Check the status of a submitted job on the HPC system.
+
         Args:
             job_id (str): The HPC job identifier.
+
         Returns:
             Dict[str, Any]: A dictionary containing job status information.
         """
@@ -274,9 +278,11 @@ class RemoteHandler:
 
     def upload_file(self, local_file: Path, remote_dir: str) -> UploadResult:
         """Upload a single file to the HPC system.
+
         Args:
             local_file (Path): Path to the local file to upload.
             remote_dir (str): The remote directory to upload to.
+
         Returns:
             UploadResult: An UploadResult indicating success or failure.
         """
@@ -319,11 +325,13 @@ class RemoteHandler:
         self, beam_id: str, remote_beam_dir: str, gpu_uuid: str
     ) -> JobSubmissionResult:
         """Submit a MOQUI simulation job to the HPC system for a single beam.
+
         Args:
             beam_id (str): The beam identifier.
             remote_beam_dir (str): The remote directory for job execution,
             containing all necessary files.
             gpu_uuid (str): The GPU UUID to use for the simulation.
+
         Returns:
             JobSubmissionResult: A JobSubmissionResult with the job ID if successful.
         """
@@ -384,9 +392,11 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
                                 job_id: str,
                                 timeout_seconds: int = 3600) -> JobStatus:
         """Wait for an HPC job to complete, polling at regular intervals.
+
         Args:
             job_id (str): The HPC job identifier.
             timeout_seconds (int): The maximum time to wait for completion.
+
         Returns:
             JobStatus: A JobStatus indicating the final job status.
         """
@@ -471,9 +481,11 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
     def download_file(self, remote_file_path: str,
                       local_dir: Path) -> DownloadResult:
         """Download a single file from the HPC system.
+
         Args:
             remote_file_path (str): The path to the remote file.
             local_dir (Path): The local directory to download to.
+
         Returns:
             DownloadResult: A DownloadResult indicating success or failure.
         """
@@ -511,8 +523,10 @@ export CUDA_VISIBLE_DEVICES={gpu_uuid}
 
     def cleanup_remote_directory(self, remote_dir: str) -> bool:
         """Clean up a remote directory and its contents.
+
         Args:
             remote_dir (str): The remote directory to clean up.
+
         Returns:
             bool: True if cleanup was successful, False otherwise.
         """
