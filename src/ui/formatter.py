@@ -14,7 +14,7 @@ from src.domain.enums import CaseStatus, GpuStatus
 # Color mappings for different statuses
 CASE_STATUS_COLORS = {
     CaseStatus.PENDING: "yellow",
-    CaseStatus.PREPROCESSING: "cyan",
+    CaseStatus.CSV_INTERPRETING: "cyan",
     CaseStatus.PROCESSING: "bold blue",
     CaseStatus.POSTPROCESSING: "bold magenta",
     CaseStatus.COMPLETED: "bold green",

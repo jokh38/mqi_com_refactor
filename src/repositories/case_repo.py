@@ -463,7 +463,7 @@ class CaseRepository(BaseRepository):
 
         active_statuses = [
             CaseStatus.PENDING.value,
-            CaseStatus.PREPROCESSING.value,
+            CaseStatus.CSV_INTERPRETING.value,
             CaseStatus.PROCESSING.value,
             CaseStatus.POSTPROCESSING.value,
         ]

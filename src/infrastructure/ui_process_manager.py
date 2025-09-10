@@ -8,7 +8,7 @@ import subprocess
 import sys
 import platform
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, IO
 from pathlib import Path
 
 from src.infrastructure.logging_handler import StructuredLogger
@@ -41,7 +41,10 @@ class UIProcessManager:
         self.logger = logger
         self.project_root = Path(__file__).parent.parent.parent
         self._process: Optional[subprocess.Popen] = None
+        self._stdout_log_file: Optional[IO[str]] = None
+        self._stderr_log_file: Optional[IO[str]] = None
         self._is_running = False
+        self.log_dir = self.project_root / self.config.logging.log_dir
     
     def start(self) -> bool:
         """Starts the UI as an independent process.
@@ -67,11 +70,22 @@ class UIProcessManager:
                     "platform": platform.system()
                 })
             
+            # Ensure log directory exists
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            stdout_log_path = self.log_dir / "dashboard_stdout.log"
+            stderr_log_path = self.log_dir / "dashboard_stderr.log"
+
+            # Open log files to capture the subprocess output
+            self._stdout_log_file = open(stdout_log_path, "w", encoding='utf-8')
+            self._stderr_log_file = open(stderr_log_path, "w", encoding='utf-8')
+
             # Start the UI process
             self._process = subprocess.Popen(
                 command,
                 creationflags=creation_flags,
-                cwd=self.project_root
+                cwd=self.project_root,
+                stdout=self._stdout_log_file,
+                stderr=self._stderr_log_file
             )
             
             # Give the process a moment to start
@@ -88,7 +102,9 @@ class UIProcessManager:
             else:
                 # Process failed to start
                 if self.logger:
-                    self.logger.error("UI process failed to start", {
+                    self.logger.error("UI process failed to start. Check dashboard_stderr.log for details.", {
+                        "stdout_log": str(stdout_log_path),
+                        "stderr_log": str(stderr_log_path),
                         "return_code": self._process.returncode
                     })
                 self._process = None
@@ -109,6 +125,16 @@ class UIProcessManager:
         Returns:
             bool: True if the process stopped successfully, False otherwise.
         """
+        # Always try to close file handles, regardless of process state.
+        if self._stdout_log_file:
+            try: self._stdout_log_file.close()
+            except Exception: pass
+            self._stdout_log_file = None
+        if self._stderr_log_file:
+            try: self._stderr_log_file.close()
+            except Exception: pass
+            self._stderr_log_file = None
+
         if not self._is_running or not self._process:
             return True
         

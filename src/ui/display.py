@@ -140,7 +140,7 @@ class DisplayManager:
         stats = {
             "Total Active": stats_data.get('total_cases', 0),
             "Pending": stats_data.get('pending', 0),
-            "Preprocessing": stats_data.get('preprocessing', 0),
+            "CSV Interpreting": stats_data.get('csv_interpreting', 0),
             "Processing": stats_data.get('processing', 0),
             "Postprocessing": stats_data.get('postprocessing', 0),
         }

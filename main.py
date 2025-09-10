@@ -155,8 +155,12 @@ class MQIApplication:
         Args:
             config_path (Optional[Path]): The path to the configuration file.
         """
-        self.config_path = config_path
-        self.settings = Settings(config_path)
+        # Resolve the config path to an absolute path to avoid issues in subprocesses.
+        if config_path and config_path.exists():
+            self.config_path = config_path.resolve()
+        else:
+            self.config_path = None
+        self.settings = Settings(self.config_path)
         self.logger: Optional[StructuredLogger] = None
         self.case_queue = mp.Queue()
         self.observer: Optional[Observer] = None
@@ -165,6 +169,7 @@ class MQIApplication:
         self.gpu_monitor: Optional[GpuMonitor] = None
         self.monitor_db_connection: Optional[DatabaseConnection] = None
         self.shutdown_event = threading.Event()
+        self.service_monitor_thread: Optional[threading.Thread] = None
 
     def initialize_logging(self) -> None:
         """Initializes the structured logging for the application.
@@ -219,12 +224,14 @@ class MQIApplication:
             if not self.settings.ui.auto_start:
                 self.logger.info("Dashboard auto-start disabled")
                 return
-            # Get database path
-            db_path = self.settings.get_database_path()
+            # Get database path and resolve to an absolute path to ensure the
+            # subprocess can find it regardless of its working directory.
+            db_path = self.settings.get_database_path().resolve()
             # Create UI process manager
             self.ui_process_manager = UIProcessManager(
                 database_path=str(db_path),
-                config_path=self.config_path,
+                # Ensure config_path is a string for the subprocess arguments.
+                config_path=str(self.config_path) if self.config_path else None,
                 config=self.settings,
                 logger=self.logger)
             # Start UI as separate process
@@ -307,27 +314,27 @@ class MQIApplication:
                             self.logger.info(f"Created {len(beam_jobs)} beam records in DB for case {case_id}")
 
                             # Step 2: Run case-level CSV interpreting
-                            case_repo.update_beams_status_by_case_id(case_id, "CSV_INTERPRETING")
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.CSV_INTERPRETING)
                             self.logger.info(f"Starting case-level CSV interpreting for {case_id}")
                             interpreting_success = run_case_level_csv_interpreting(case_id, case_path, self.settings)
                             if not interpreting_success:
                                 self.logger.error(f"Case-level CSV interpreting failed for {case_id}. Skipping.")
                                 case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="CSV interpreting failed.")
-                                case_repo.update_beams_status_by_case_id(case_id, "FAILED")
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
                                 continue
 
                             # Step 3: Run case-level file upload to HPC
-                            case_repo.update_beams_status_by_case_id(case_id, "UPLOADING")
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.UPLOADING)
                             self.logger.info(f"Starting case-level file upload for {case_id}")
                             upload_success = run_case_level_upload(case_id, case_path, self.settings)
                             if not upload_success:
                                 self.logger.error(f"Case-level upload failed for {case_id}. Skipping.")
                                 case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="File upload failed.")
-                                case_repo.update_beams_status_by_case_id(case_id, "FAILED")
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
                                 continue
 
                             # Step 4: Dispatch individual workers for simulation
-                            case_repo.update_beams_status_by_case_id(case_id, "PENDING")  # Workers will pick this up
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.PENDING)  # Workers will pick this up
                             self.logger.info(f"Dispatching workers for case: {case_id}")
                             for job in beam_jobs:
                                 beam_id = job["beam_id"]
@@ -365,6 +372,24 @@ class MQIApplication:
                 # Prevent busy-waiting
                 time.sleep(1)
 
+    def _monitor_services(self) -> None:
+        """Periodically monitors the health of critical background services."""
+        self.logger.info("Service monitor thread started.")
+        while not self.shutdown_event.is_set():
+            try:
+                # Monitor the dashboard UI process
+                if self.ui_process_manager and self.settings.ui.auto_start and not self.ui_process_manager.is_running():
+                    self.logger.warning("Dashboard UI process is not running. Attempting to restart.")
+                    if not self.ui_process_manager.restart():
+                        self.logger.error("Failed to restart the dashboard UI process.")
+
+                # Add other service checks here if needed (e.g., GPU monitor)
+
+            except Exception as e:
+                self.logger.error("Error in service monitoring thread", {"error": str(e)})
+
+            self.shutdown_event.wait(timeout=30)  # Check every 30 seconds
+
     def shutdown(self) -> None:
         """Performs a graceful shutdown of all application components."""
         self.logger.info("Shutting down MQI Communicator")
@@ -373,6 +398,10 @@ class MQIApplication:
         if self.observer:
             self.observer.stop()
             self.observer.join()
+        # Wait for monitor thread to finish
+        if self.service_monitor_thread and self.service_monitor_thread.is_alive():
+            self.logger.info("Waiting for service monitor to stop...")
+            self.service_monitor_thread.join(timeout=5)
         # Stop GPU monitor
         if self.gpu_monitor:
             self.logger.info("Stopping GPU monitor.")
@@ -400,6 +429,10 @@ class MQIApplication:
             self.start_file_watcher()
             self.start_dashboard()
             self.start_gpu_monitor()
+
+            # Start a background thread to monitor services
+            self.service_monitor_thread = threading.Thread(target=self._monitor_services, daemon=True)
+            self.service_monitor_thread.start()
             # Run main processing loop
             self.run_worker_loop()
         except KeyboardInterrupt:

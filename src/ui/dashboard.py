@@ -165,30 +165,50 @@ def setup_signal_handlers(dashboard: DashboardProcess) -> None:
 
 def main() -> NoReturn:
     """The main entry point for the dashboard process."""
-    parser = argparse.ArgumentParser(description="MQI Communicator Dashboard")
-    parser.add_argument("database_path", type=str, help="Path to the SQLite database file.")
-    parser.add_argument("--config", type=str, help="Path to the YAML configuration file.", default=None)
-    args = parser.parse_args()
-    
-    # Validate database path
-    if not Path(args.database_path).exists():
-        print(f"Database file does not exist: {args.database_path}")
+    try:
+        parser = argparse.ArgumentParser(description="MQI Communicator Dashboard")
+        parser.add_argument("database_path", type=str, help="Path to the SQLite database file.")
+        parser.add_argument("--config", type=str, help="Path to the YAML configuration file.", default=None)
+        args = parser.parse_args()
+
+        # Validate database path
+        db_path = Path(args.database_path)
+        if not db_path.exists():
+            # Raise an explicit error that can be caught and logged.
+            raise FileNotFoundError(f"Dashboard startup failed: Database file does not exist at the provided path: {db_path.resolve()}")
+
+        # Create and run dashboard
+        dashboard = DashboardProcess(
+            database_path=args.database_path,
+            config_path=args.config
+        )
+        setup_signal_handlers(dashboard)
+
+        print(f"Starting MQI Dashboard UI (PID: {os.getpid()})...")
+        print(f"Database: {args.database_path}")
+        if args.config:
+            print(f"Config: {args.config}")
+        print("Press Ctrl+C to stop")
+
+        dashboard.run()
+
+    except Exception as e:
+        # Pre-logging error handler.
+        # This will run if anything fails before the main logger is initialized.
+        # The CWD is the project root, set by UIProcessManager.
+        error_log_path = Path.cwd() / "dashboard_startup_error.log"
+        with open(error_log_path, "w", encoding='utf-8') as f:
+            import traceback
+            f.write(f"Timestamp: {time.asctime()}\n")
+            f.write("A critical error occurred during dashboard startup:\n\n")
+            f.write(f"Error Type: {type(e).__name__}\n")
+            f.write(f"Error Message: {e}\n\n")
+            f.write("Traceback:\n")
+            traceback.print_exc(file=f)
+
+        # Also print to stderr for immediate feedback if possible
+        print(f"CRITICAL: Dashboard failed to start. See {error_log_path.resolve()} for details.", file=sys.stderr)
         sys.exit(1)
-    
-    # Create and run dashboard
-    dashboard = DashboardProcess(
-        database_path=args.database_path,
-        config_path=args.config
-    )
-    setup_signal_handlers(dashboard)
-    
-    print(f"Starting MQI Dashboard UI (PID: {os.getpid()})...")
-    print(f"Database: {args.database_path}")
-    if args.config:
-        print(f"Config: {args.config}")
-    print("Press Ctrl+C to stop")
-    
-    dashboard.run()
 
 
 if __name__ == "__main__":
