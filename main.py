@@ -301,13 +301,14 @@ class MQIApplication:
                                                 config=self.settings.database,
                                                 logger=self.logger) as db_conn:
                             case_repo = CaseRepository(db_conn, self.logger)
-                            # Step 1: Discover beams and create DB records for UI visibility
-                            self.logger.info(f"Discovering beams for case: {case_id}")
+                            # Step 1: Discover beams and validate data transfer completion
+                            self.logger.info(f"Discovering beams and validating data transfer for case: {case_id}")
                             beam_jobs = prepare_beam_jobs(case_id, case_path, self.settings)
                             if not beam_jobs:
-                                self.logger.error(f"No beams found for case {case_id}. Skipping.")
+                                self.logger.error(f"No beams found or data transfer validation failed for case {case_id}. Skipping.")
                                 case_repo.add_case(case_id, case_path)
-                                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="No beams found.")
+                                case_repo.update_case_status(case_id, CaseStatus.FAILED,
+                                                            error_message="No beams found or data transfer incomplete.")
                                 continue
 
                             case_repo.create_case_with_beams(case_id, str(case_path), beam_jobs)

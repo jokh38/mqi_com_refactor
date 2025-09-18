@@ -16,6 +16,7 @@ from src.handlers.local_handler import LocalHandler
 from src.infrastructure.process_manager import CommandExecutor
 from src.utils.retry_policy import RetryPolicy
 from src.domain.errors import ProcessingError
+from src.core.data_integrity_validator import DataIntegrityValidator
 
 
 def run_case_level_csv_interpreting(
@@ -216,8 +217,8 @@ def prepare_beam_jobs(
 ) -> List[Dict[str, Any]]:
     """Scans a case directory for beams and returns a list of jobs to be processed by workers.
 
-    This function no longer interacts with the database. It only discovers beam
-    subdirectories and prepares the job information.
+    This function validates data transfer completion by checking RT plan beam count
+    against actual subdirectories before preparing beam jobs.
 
     Args:
         case_id (str): The ID of the parent case.
@@ -226,7 +227,7 @@ def prepare_beam_jobs(
 
     Returns:
         List[Dict[str, Any]]: A list of dictionaries, each representing a beam job to be executed.
-        Returns an empty list if no beams are found or an error occurs.
+        Returns an empty list if no beams are found, validation fails, or an error occurs.
     """
     logger = StructuredLogger(f"dispatcher_{case_id}", config=settings.logging)
     beam_jobs = []
@@ -234,7 +235,15 @@ def prepare_beam_jobs(
     try:
         logger.info(f"Scanning for beams for case: {case_id}")
 
-        # Scan for beam subdirectories
+        # Step 1: Validate data transfer completion
+        validator = DataIntegrityValidator(logger)
+        is_valid, error_message = validator.validate_data_transfer_completion(case_id, case_path)
+
+        if not is_valid:
+            logger.error(f"Data transfer validation failed for case {case_id}: {error_message}")
+            return []  # Return empty list to prevent processing of incomplete case
+
+        # Step 2: Scan for beam subdirectories (validation passed)
         beam_paths = [d for d in case_path.iterdir() if d.is_dir()]
 
         if not beam_paths:
@@ -243,12 +252,20 @@ def prepare_beam_jobs(
 
         logger.info(f"Found {len(beam_paths)} beams to process.", {"case_id": case_id})
 
+        # Step 3: Prepare beam jobs
         for beam_path in beam_paths:
             beam_name = beam_path.name
             beam_id = f"{case_id}_{beam_name}"
             beam_jobs.append({"beam_id": beam_id, "beam_path": beam_path})
 
         logger.info(f"Successfully prepared {len(beam_jobs)} beam jobs for case: {case_id}")
+
+        # Step 4: Log additional beam information for reference
+        beam_info = validator.get_beam_information(case_path)
+        if beam_info.get("beam_count", 0) > 0:
+            logger.info(f"RT plan information - Patient ID: {beam_info.get('patient_id')}, "
+                       f"Plan: {beam_info.get('plan_label')}, Expected beams: {beam_info.get('beam_count')}")
+
     except Exception as e:
         logger.error("Failed to prepare beam jobs", {"case_id": case_id, "error": str(e)})
         return []  # Return empty list on error

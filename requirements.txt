@@ -13,6 +13,9 @@ paramiko>=3.0.0
 # YAML configuration file parsing
 PyYAML>=6.0.0
 
+# DICOM file handling for RT plan reading
+pydicom>=2.3.0
+
 # Development and optional dependencies (uncomment if needed)
 pytest>=7.0.0          # For running tests
 pytest-mock>=3.0.0     # For mocking
