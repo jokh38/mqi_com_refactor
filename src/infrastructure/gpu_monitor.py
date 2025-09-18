@@ -139,25 +139,26 @@ class GpuMonitor:
             csv_reader = csv.reader(StringIO(raw_output))
             
             for row_index, row in enumerate(csv_reader):
-                if len(row) != 7:  # Expected: uuid, name, mem_total, mem_used, mem_free, temp, util
+                if len(row) != 8:  # Expected: index, uuid, name, mem_total, mem_used, mem_free, temp, util
                     self.logger.warning("Unexpected nvidia-smi output format", {
                         "row_index": row_index,
                         "row_length": len(row),
-                        "expected_length": 7,
+                        "expected_length": 8,
                         "row_data": row
                     })
                     continue
-                
+
                 try:
                     # Parse and validate data
                     gpu_info = {
-                        'uuid': row[0].strip(),
-                        'name': self._parse_gpu_name(row[1]),
-                        'memory_total': self._parse_memory_value(row[2]),
-                        'memory_used': self._parse_memory_value(row[3]),
-                        'memory_free': self._parse_memory_value(row[4]),
-                        'temperature': self._parse_temperature_value(row[5]),
-                        'utilization': self._parse_utilization_value(row[6]),
+                        'gpu_index': int(row[0].strip()),
+                        'uuid': row[1].strip(),
+                        'name': self._parse_gpu_name(row[2]),
+                        'memory_total': self._parse_memory_value(row[3]),
+                        'memory_used': self._parse_memory_value(row[4]),
+                        'memory_free': self._parse_memory_value(row[5]),
+                        'temperature': self._parse_temperature_value(row[6]),
+                        'utilization': self._parse_utilization_value(row[7]),
                         'last_updated': datetime.now()
                     }
                     

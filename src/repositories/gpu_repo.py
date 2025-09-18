@@ -42,11 +42,12 @@ class GpuRepository(BaseRepository):
 
         query = """
             INSERT INTO gpu_resources (
-                uuid, name, memory_total, memory_used, memory_free,
+                uuid, gpu_index, name, memory_total, memory_used, memory_free,
                 temperature, utilization, status, last_updated
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(uuid) DO UPDATE SET
+                gpu_index = excluded.gpu_index,
                 name = excluded.name,
                 memory_total = excluded.memory_total,
                 memory_used = excluded.memory_used,
@@ -59,6 +60,7 @@ class GpuRepository(BaseRepository):
         params_list = [
             (
                 gpu["uuid"],
+                gpu["gpu_index"],
                 gpu["name"],
                 gpu["memory_total"],
                 gpu["memory_used"],
@@ -118,6 +120,100 @@ class GpuRepository(BaseRepository):
         self._execute_query(query, (GpuStatus.IDLE.value, gpu_uuid))
 
         self.logger.info("GPU released", {"gpu_uuid": gpu_uuid})
+
+    def find_and_lock_multiple_gpus(
+        self, case_id: str, num_gpus: int, min_memory_mb: int = 1000
+    ) -> Optional[List[Dict[str, Any]]]:
+        """Atomically finds multiple idle GPUs with sufficient memory and assigns them to a case.
+
+        Args:
+            case_id (str): The case identifier requesting the GPUs.
+            num_gpus (int): Number of GPUs to allocate.
+            min_memory_mb (int, optional): The minimum required memory in MB. Defaults to 1000.
+
+        Returns:
+            Optional[List[Dict[str, Any]]]: A list of dictionaries with gpu_uuid and gpu_id if successful, None otherwise.
+
+        Raises:
+            GpuResourceError: If the allocation fails.
+        """
+        self._log_operation(
+            "find_and_lock_multiple_gpus", case_id, num_gpus=num_gpus, min_memory_mb=min_memory_mb
+        )
+
+        try:
+            with self.db.transaction() as conn:
+                # Find available GPUs with their actual indices
+                query = """
+                    SELECT uuid, gpu_index, memory_free
+                    FROM gpu_resources
+                    WHERE status = ? AND memory_free >= ?
+                    ORDER BY gpu_index ASC
+                    LIMIT ?
+                """
+
+                cursor = conn.execute(query, (GpuStatus.IDLE.value, min_memory_mb, num_gpus))
+                gpu_rows = cursor.fetchall()
+
+                if len(gpu_rows) < num_gpus:
+                    self.logger.warning(
+                        "Insufficient GPUs available",
+                        {"case_id": case_id, "requested": num_gpus, "available": len(gpu_rows), "min_memory_mb": min_memory_mb},
+                    )
+                    return None
+
+                # Assign all GPUs atomically
+                gpu_allocations = []
+                for gpu_row in gpu_rows:
+                    gpu_uuid = gpu_row["uuid"]
+
+                    update_query = """
+                        UPDATE gpu_resources
+                        SET status = ?, assigned_case = ?,
+                            last_updated = CURRENT_TIMESTAMP
+                        WHERE uuid = ? AND status = ?
+                    """
+
+                    cursor = conn.execute(
+                        update_query,
+                        (
+                            GpuStatus.ASSIGNED.value,
+                            case_id,
+                            gpu_uuid,
+                            GpuStatus.IDLE.value,
+                        ),
+                    )
+
+                    if cursor.rowcount != 1:
+                        self.logger.warning(
+                            "GPU assignment race condition during multi-GPU allocation",
+                            {"gpu_uuid": gpu_uuid, "case_id": case_id},
+                        )
+                        return None
+
+                    # Store allocation with actual GPU index from nvidia-smi
+                    gpu_allocations.append({
+                        "gpu_uuid": gpu_uuid,
+                        "gpu_id": gpu_row["gpu_index"],  # Use actual GPU index (e.g., 2, 4, 7, 8)
+                        "memory_free": gpu_row["memory_free"]
+                    })
+
+                self.logger.info(
+                    "Multiple GPUs allocated successfully",
+                    {
+                        "case_id": case_id,
+                        "gpus_allocated": len(gpu_allocations),
+                        "gpu_details": [{"uuid": gpu["gpu_uuid"], "gpu_id": gpu["gpu_id"]} for gpu in gpu_allocations]
+                    },
+                )
+
+                return gpu_allocations
+
+        except Exception as e:
+            self.logger.error(
+                "Failed to allocate multiple GPUs", {"case_id": case_id, "num_gpus": num_gpus, "error": str(e)}
+            )
+            raise GpuResourceError(f"Failed to allocate {num_gpus} GPUs for case {case_id}: {e}")
 
     def find_and_lock_available_gpu(
         self, case_id: str, min_memory_mb: int = 1000
@@ -210,10 +306,10 @@ class GpuRepository(BaseRepository):
         self._log_operation("get_all_gpu_resources")
 
         query = """
-            SELECT uuid, name, memory_total, memory_used, memory_free,
+            SELECT uuid, gpu_index, name, memory_total, memory_used, memory_free,
                    temperature, utilization, status, assigned_case, last_updated
             FROM gpu_resources
-            ORDER BY name ASC
+            ORDER BY gpu_index ASC
         """
 
         rows = self._execute_query(query, fetch_all=True)
@@ -223,6 +319,7 @@ class GpuRepository(BaseRepository):
             gpus.append(
                 GpuResource(
                     uuid=row["uuid"],
+                    gpu_index=row["gpu_index"],
                     name=row["name"],
                     memory_total=row["memory_total"],
                     memory_used=row["memory_used"],
@@ -253,7 +350,7 @@ class GpuRepository(BaseRepository):
         self._log_operation("get_gpu_by_uuid", uuid)
 
         query = """
-            SELECT uuid, name, memory_total, memory_used, memory_free,
+            SELECT uuid, gpu_index, name, memory_total, memory_used, memory_free,
                    temperature, utilization, status, assigned_case, last_updated
             FROM gpu_resources
             WHERE uuid = ?
@@ -264,6 +361,7 @@ class GpuRepository(BaseRepository):
         if row:
             return GpuResource(
                 uuid=row["uuid"],
+                gpu_index=row["gpu_index"],
                 name=row["name"],
                 memory_total=row["memory_total"],
                 memory_used=row["memory_used"],

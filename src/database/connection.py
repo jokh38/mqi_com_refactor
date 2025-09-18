@@ -169,6 +169,7 @@ class DatabaseConnection:
                     """
                     CREATE TABLE IF NOT EXISTS gpu_resources (
                         uuid TEXT PRIMARY KEY,
+                        gpu_index INTEGER NOT NULL,
                         name TEXT NOT NULL,
                         memory_total INTEGER NOT NULL,
                         memory_used INTEGER NOT NULL,
@@ -221,6 +222,13 @@ class DatabaseConnection:
                     "CREATE INDEX IF NOT EXISTS idx_beams_parent_case ON "
                     "beams (parent_case_id)"
                 )
+
+                # Migrate gpu_resources table to add gpu_index column if it doesn't exist
+                cursor = conn.execute("PRAGMA table_info(gpu_resources)")
+                columns = [column[1] for column in cursor.fetchall()]
+                if 'gpu_index' not in columns:
+                    self.logger.info("Adding gpu_index column to gpu_resources table")
+                    conn.execute("ALTER TABLE gpu_resources ADD COLUMN gpu_index INTEGER DEFAULT 0")
 
             self.logger.info("Database schema initialized successfully")
 

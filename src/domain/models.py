@@ -38,6 +38,7 @@ class BeamData:
 class GpuResource:
     """Data Transfer Object for GPU resource information."""
     uuid: str
+    gpu_index: int
     name: str
     memory_total: int
     memory_used: int

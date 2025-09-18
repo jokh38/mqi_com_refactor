@@ -4,19 +4,21 @@
 """Contains logic for dispatching cases and beams for processing."""
 
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from src.config.settings import Settings
 from src.database.connection import DatabaseConnection
 from src.repositories.case_repo import CaseRepository
 from src.handlers.remote_handler import RemoteHandler
 from src.infrastructure.logging_handler import StructuredLogger
-from src.domain.enums import CaseStatus, WorkflowStep, BeamStatus
+from src.domain.enums import CaseStatus, WorkflowStep
 from src.handlers.local_handler import LocalHandler
 from src.infrastructure.process_manager import CommandExecutor
 from src.utils.retry_policy import RetryPolicy
 from src.domain.errors import ProcessingError
 from src.core.data_integrity_validator import DataIntegrityValidator
+from src.core.tps_generator import TpsGenerator
+from src.repositories.gpu_repo import GpuRepository
 
 
 def run_case_level_csv_interpreting(
@@ -271,3 +273,109 @@ def prepare_beam_jobs(
         return []  # Return empty list on error
 
     return beam_jobs
+
+
+def run_case_level_tps_generation(
+    case_id: str, case_path: Path, beam_count: int, settings: Settings
+) -> Optional[List[Dict[str, Any]]]:
+    """Generates moqui_tps.in file at case level with dynamic GPU assignments.
+
+    Args:
+        case_id (str): The ID of the case.
+        case_path (Path): The file system path to the case directory.
+        beam_count (int): Number of beams in the case.
+        settings (Settings): The application settings object.
+
+    Returns:
+        Optional[List[Dict[str, Any]]]: List of GPU assignments if successful, None otherwise.
+    """
+    logger = StructuredLogger(f"tps_dispatcher_{case_id}", config=settings.logging)
+    db_connection = None
+
+    try:
+        logger.info(f"Starting case-level TPS generation for case: {case_id}")
+
+        # Setup database connection and repositories
+        db_path = settings.get_database_path()
+        db_connection = DatabaseConnection(
+            db_path=db_path, config=settings.database, logger=logger
+        )
+        db_connection.init_db()
+
+        gpu_repo = GpuRepository(db_connection, logger)
+        case_repo = CaseRepository(db_connection, logger)
+
+        # Record workflow step
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.TPS_GENERATION,
+            status="started",
+            metadata={"message": f"Generating TPS file with {beam_count} beam assignments."}
+        )
+
+        # Allocate multiple GPUs for all beams
+        logger.info(f"Allocating {beam_count} GPUs for case {case_id}")
+        gpu_assignments = gpu_repo.find_and_lock_multiple_gpus(
+            case_id=case_id,
+            num_gpus=beam_count
+        )
+
+        if not gpu_assignments:
+            error_message = f"Failed to allocate {beam_count} GPUs for case {case_id}"
+            logger.error(error_message)
+            case_repo.record_workflow_step(
+                case_id=case_id,
+                step=WorkflowStep.TPS_GENERATION,
+                status="failed",
+                metadata={"error": error_message}
+            )
+            return None
+
+        # Generate TPS file with GPU assignments
+        tps_generator = TpsGenerator(settings, logger)
+        success = tps_generator.generate_tps_file_with_gpu_assignments(
+            case_path=case_path,
+            case_id=case_id,
+            gpu_assignments=gpu_assignments,
+            execution_mode="remote"
+        )
+
+        if not success:
+            error_message = f"TPS file generation failed for case {case_id}"
+            logger.error(error_message)
+            # Release allocated GPUs on failure
+            gpu_repo.release_all_for_case(case_id)
+            case_repo.record_workflow_step(
+                case_id=case_id,
+                step=WorkflowStep.TPS_GENERATION,
+                status="failed",
+                metadata={"error": error_message}
+            )
+            return None
+
+        logger.info(f"Case-level TPS generation completed successfully for: {case_id}")
+        case_repo.record_workflow_step(
+            case_id=case_id,
+            step=WorkflowStep.TPS_GENERATION,
+            status="completed",
+            metadata={
+                "message": f"Generated TPS file with {beam_count} beam-to-GPU assignments",
+                "gpu_assignments": gpu_assignments
+            }
+        )
+
+        return gpu_assignments
+
+    except Exception as e:
+        logger.error("Case-level TPS generation failed", {"case_id": case_id, "error": str(e)})
+        # Release any allocated GPUs on error
+        if db_connection:
+            try:
+                gpu_repo = GpuRepository(db_connection, logger)
+                gpu_repo.release_all_for_case(case_id)
+            except Exception as cleanup_error:
+                logger.error("Failed to cleanup GPU allocations", {"error": str(cleanup_error)})
+        return None
+    finally:
+        if db_connection:
+            db_connection.close()

@@ -36,7 +36,7 @@ from src.infrastructure.gpu_monitor import GpuMonitor
 from src.handlers.remote_handler import RemoteHandler
 from src.utils.retry_policy import RetryPolicy
 from src.core.worker import worker_main
-from src.core.dispatcher import prepare_beam_jobs, run_case_level_csv_interpreting, run_case_level_upload
+from src.core.dispatcher import prepare_beam_jobs, run_case_level_csv_interpreting, run_case_level_upload, run_case_level_tps_generation
 from src.domain.enums import CaseStatus, BeamStatus
 
 def scan_existing_cases(case_queue: mp.Queue,
@@ -324,7 +324,17 @@ class MQIApplication:
                                 case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
                                 continue
 
-                            # Step 3: Run case-level file upload to HPC
+                            # Step 3: Generate TPS file with dynamic GPU assignments
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.TPS_GENERATION)
+                            self.logger.info(f"Starting case-level TPS generation for {case_id}")
+                            gpu_assignments = run_case_level_tps_generation(case_id, case_path, len(beam_jobs), self.settings)
+                            if not gpu_assignments:
+                                self.logger.error(f"Case-level TPS generation failed for {case_id}. Skipping.")
+                                case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="TPS generation failed.")
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
+                                continue
+
+                            # Step 4: Run case-level file upload to HPC
                             case_repo.update_beams_status_by_case_id(case_id, BeamStatus.UPLOADING)
                             self.logger.info(f"Starting case-level file upload for {case_id}")
                             upload_success = run_case_level_upload(case_id, case_path, self.settings)
@@ -334,7 +344,7 @@ class MQIApplication:
                                 case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
                                 continue
 
-                            # Step 4: Dispatch individual workers for simulation
+                            # Step 5: Dispatch individual workers for simulation
                             case_repo.update_beams_status_by_case_id(case_id, BeamStatus.PENDING)  # Workers will pick this up
                             self.logger.info(f"Dispatching workers for case: {case_id}")
                             for job in beam_jobs:

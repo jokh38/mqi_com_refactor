@@ -5,7 +5,7 @@
 """Contains the TpsGenerator service for creating moqui_tps.in files."""
 
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 from src.config.settings import Settings
 from src.infrastructure.logging_handler import StructuredLogger
@@ -29,6 +29,96 @@ class TpsGenerator:
         self.settings = settings
         self.logger = logger
         self.base_parameters = settings.get_moqui_tps_parameters()
+
+    def generate_tps_file_with_gpu_assignments(
+        self,
+        case_path: Path,
+        case_id: str,
+        gpu_assignments: List[Dict[str, Any]],
+        execution_mode: str = "local"
+    ) -> bool:
+        """Generate moqui_tps.in file for a case with multiple beam-to-GPU assignments.
+
+        Args:
+            case_path (Path): Path to the case directory.
+            case_id (str): Unique identifier for the case.
+            gpu_assignments (List[Dict[str, Any]]): List of GPU assignments with beam numbers and GPU IDs.
+            execution_mode (str): "local" or "remote" - determines path construction.
+
+        Returns:
+            bool: True if file was generated successfully, False otherwise.
+        """
+        try:
+            self.logger.info("Generating moqui_tps.in file with dynamic GPU assignments", {
+                "case_id": case_id,
+                "case_path": str(case_path),
+                "gpu_assignments": gpu_assignments,
+                "execution_mode": execution_mode
+            })
+
+            # Start with base parameters from config
+            parameters = self.base_parameters.copy()
+
+            # Generate dynamic paths based on execution mode
+            dynamic_paths = self._generate_dynamic_paths(
+                case_path, case_id, execution_mode)
+            parameters.update(dynamic_paths)
+
+            # Set beam count and GPU assignments
+            beam_count = len(gpu_assignments)
+            parameters["BeamNumbers"] = beam_count
+            parameters["GantryNum"] = beam_count
+
+            # Create GPU assignment mapping
+            if gpu_assignments:
+                # For multiple beams, set BeamNumbers to map to actual GPU IDs
+                # Format: "BeamNumber1:GPUID1,BeamNumber2:GPUID2,..."
+                gpu_mapping = []
+                for i, assignment in enumerate(gpu_assignments):
+                    beam_number = i + 1  # Beam numbers are 1-indexed
+                    # Use the actual GPU ID from the assignment, not the sequential index
+                    gpu_id = assignment.get("gpu_id", 0)
+                    gpu_mapping.append(f"{beam_number}:{gpu_id}")
+
+                # Set GPUID as comma-separated mapping or single value for compatibility
+                if len(gpu_assignments) == 1:
+                    # Single beam case - just use the GPU ID
+                    parameters["GPUID"] = gpu_assignments[0].get("gpu_id", 0)
+                else:
+                    # Multiple beams - use mapping format
+                    parameters["GPUID"] = ",".join(gpu_mapping)
+            else:
+                # Fallback to default single GPU
+                parameters["GPUID"] = 0
+                parameters["BeamNumbers"] = 1
+                parameters["GantryNum"] = 1
+
+            # Validate required parameters
+            if not self._validate_parameters(parameters, case_id):
+                return False
+
+            # Generate and write the file
+            content = self._format_parameters_to_string(parameters)
+            output_file = case_path / "moqui_tps.in"
+            with open(output_file, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+            self.logger.info("moqui_tps.in file generated successfully with GPU assignments", {
+                "case_id": case_id,
+                "output_file": str(output_file),
+                "parameters_count": len(parameters),
+                "beam_count": beam_count,
+                "gpu_assignments": gpu_assignments
+            })
+            return True
+        except Exception as e:
+            self.logger.error("Failed to generate moqui_tps.in file with GPU assignments", {
+                "case_id": case_id,
+                "case_path": str(case_path),
+                "error": str(e),
+                "exception_type": type(e).__name__
+            })
+            return False
 
     def generate_tps_file(
         self,

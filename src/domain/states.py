@@ -76,52 +76,32 @@ class InitialState(WorkflowState):
 
     @handle_state_exceptions
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
-        """Perform initial validation for the beam and generate its moqui_tps.in file."""
-        context.logger.info("Performing initial validation and moqui_tps.in generation for beam", {
+        """Perform initial validation for the beam and verify TPS file exists."""
+        context.logger.info("Performing initial validation for beam", {
             "beam_id": context.id,
             "beam_path": str(context.path)
         })
-        context.case_repo.update_beam_status(context.id, BeamStatus.TPS_GENERATION)
+        context.case_repo.update_beam_status(context.id, BeamStatus.VALIDATING)
 
         if not context.path.is_dir():
             raise ProcessingError(f"Beam path is not a valid directory: {context.path}")
 
-        context.logger.info("Generating moqui_tps.in configuration file", {"beam_id": context.id})
-
-        gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.id)
-        if not gpu_allocation:
-            raise ProcessingError("No GPU available for TPS generation")
-        
-        try:
-            gpu_id = 0
-            success = context.tps_generator.generate_tps_file(
-                case_path=context.path,
-                case_id=context.id,
-                gpu_id=gpu_id,
-                execution_mode="remote"
-            )
-        finally:
-            context.gpu_repo.release_gpu(gpu_allocation['gpu_uuid'])
-
-        if not success:
-            raise ProcessingError("Failed to generate moqui_tps.in file")
-
-        tps_file = context.path / "moqui_tps.in"
-        if not tps_file.exists():
-            raise ProcessingError(f"Generated moqui_tps.in file not found at {tps_file}")
-
+        # Check if TPS file was generated at case level
         beam = context.case_repo.get_beam(context.id)
-        if beam:
-            context.case_repo.record_workflow_step(
-                case_id=beam.parent_case_id,
-                step=WorkflowStep.TPS_GENERATION,
-                status="completed",
-                metadata={"beam_id": context.id, "message": "TPS configuration file generated successfully"}
-            )
+        if not beam:
+            raise ProcessingError(f"Could not retrieve beam data for beam_id: {context.id}")
 
-        context.logger.info("Initial validation and TPS generation completed successfully for beam", {
+        # Look for TPS file in the parent case directory
+        case_path = context.path.parent  # Beam path is usually case_path/beam_name
+        tps_file = case_path / "moqui_tps.in"
+
+        if not tps_file.exists():
+            raise ProcessingError(f"moqui_tps.in file not found at case level: {tps_file}. TPS generation should have been completed at case level.")
+
+        context.logger.info("Initial validation completed successfully for beam", {
             "beam_id": context.id,
-            "tps_file": str(tps_file)
+            "tps_file": str(tps_file),
+            "message": "TPS file found from case-level generation"
         })
 
         return FileUploadState()
@@ -188,50 +168,50 @@ class HpcExecutionState(WorkflowState):
     def execute(self, context: 'WorkflowManager') -> WorkflowState:
         """Submits a MOQUI simulation job for the beam and polls for completion."""
         context.logger.info("Starting HPC simulation for beam", {"beam_id": context.id})
-        
-        gpu_allocation = context.gpu_repo.find_and_lock_available_gpu(context.id)
-        if not gpu_allocation:
-            raise ProcessingError("No GPU available for simulation")
 
-        context.logger.info("GPU allocated for simulation", {
+        # GPUs are already allocated at case level, no need to allocate individually
+        # The beam should use the GPU assignment from the case-level TPS file
+        beam = context.case_repo.get_beam(context.id)
+        if not beam:
+            raise ProcessingError(f"Could not retrieve beam data for beam_id: {context.id}")
+
+        context.logger.info("Using case-level GPU allocation for simulation", {
             "beam_id": context.id,
-            "gpu_uuid": gpu_allocation.get('gpu_uuid')
+            "case_id": beam.parent_case_id
         })
 
-        try:
-            remote_beam_dir = context.shared_context.get("remote_beam_dir")
-            if not remote_beam_dir:
-                raise ProcessingError("Remote beam directory not found in shared context.")
+        remote_beam_dir = context.shared_context.get("remote_beam_dir")
+        if not remote_beam_dir:
+            raise ProcessingError("Remote beam directory not found in shared context.")
 
-            job_result = context.remote_handler.submit_simulation_job(
-                beam_id=context.id,
-                remote_beam_dir=remote_beam_dir,
-                gpu_uuid=gpu_allocation.get('gpu_uuid')
-            )
-            
-            if not job_result.success:
-                raise ProcessingError(f"Failed to submit HPC job: {job_result.error}")
-            
-            job_id = job_result.job_id
-            context.case_repo.assign_hpc_job_id_to_beam(context.id, job_id)
-            context.case_repo.update_beam_status(context.id, BeamStatus.HPC_QUEUED)
+        # Submit job without individual GPU allocation (GPUs managed at case level)
+        job_result = context.remote_handler.submit_simulation_job(
+            beam_id=context.id,
+            remote_beam_dir=remote_beam_dir,
+            gpu_uuid=None  # GPU allocation handled in TPS file
+        )
 
-            context.logger.info("HPC job submitted, polling for completion", {"beam_id": context.id, "job_id": job_id})
-            
-            context.case_repo.update_beam_status(context.id, BeamStatus.HPC_RUNNING)
-            job_status = context.remote_handler.wait_for_job_completion(
-                job_id=job_id,
-                timeout_seconds=3600
-            )
-            
-            if job_status.failed:
-                raise ProcessingError(f"HPC job failed: {job_status.error_message}")
-            
-            context.logger.info("HPC simulation completed successfully for beam", {"beam_id": context.id, "job_id": job_id})
-            
-            return DownloadState()
-        finally:
-            context.gpu_repo.release_gpu(gpu_allocation.get('gpu_uuid'))
+        if not job_result.success:
+            raise ProcessingError(f"Failed to submit HPC job: {job_result.error}")
+
+        job_id = job_result.job_id
+        context.case_repo.assign_hpc_job_id_to_beam(context.id, job_id)
+        context.case_repo.update_beam_status(context.id, BeamStatus.HPC_QUEUED)
+
+        context.logger.info("HPC job submitted, polling for completion", {"beam_id": context.id, "job_id": job_id})
+
+        context.case_repo.update_beam_status(context.id, BeamStatus.HPC_RUNNING)
+        job_status = context.remote_handler.wait_for_job_completion(
+            job_id=job_id,
+            timeout_seconds=3600
+        )
+
+        if job_status.failed:
+            raise ProcessingError(f"HPC job failed: {job_status.error_message}")
+
+        context.logger.info("HPC simulation completed successfully for beam", {"beam_id": context.id, "job_id": job_id})
+
+        return DownloadState()
 
     def get_state_name(self) -> str:
         return "HPC Execution"
