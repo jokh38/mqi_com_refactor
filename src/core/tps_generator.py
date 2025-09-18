@@ -9,6 +9,8 @@ from typing import Dict, Any, List
 
 from src.config.settings import Settings
 from src.infrastructure.logging_handler import StructuredLogger
+from src.core.data_integrity_validator import DataIntegrityValidator
+from src.domain.errors import ProcessingError
 
 
 class TpsGenerator:
@@ -64,10 +66,26 @@ class TpsGenerator:
                 case_path, case_id, execution_mode)
             parameters.update(dynamic_paths)
 
+            # Extract gantry number from DICOM
+            try:
+                validator = DataIntegrityValidator(self.logger)
+                gantry_number = validator.extract_gantry_number_from_rtplan(
+                    case_path
+                )
+                parameters["GantryNum"] = gantry_number
+                self.logger.info(
+                    f"Extracted gantry number {gantry_number} from DICOM RT Plan "
+                    f"for case {case_id}"
+                )
+            except ProcessingError as e:
+                self.logger.error(
+                    f"Failed to extract gantry number for case {case_id}: {e}"
+                )
+                return False  # Fail the case
+
             # Set beam count and GPU assignments
             beam_count = len(gpu_assignments)
             parameters["BeamNumbers"] = beam_count
-            parameters["GantryNum"] = beam_count
 
             # Create GPU assignment mapping
             if gpu_assignments:
@@ -91,7 +109,6 @@ class TpsGenerator:
                 # Fallback to default single GPU
                 parameters["GPUID"] = 0
                 parameters["BeamNumbers"] = 1
-                parameters["GantryNum"] = 1
 
             # Validate required parameters
             if not self._validate_parameters(parameters, case_id):
@@ -232,23 +249,38 @@ class TpsGenerator:
         """
         case_data = {}
         try:
-            # Look for beam number information in DICOM files or metadata
-            # For now, use default value but this could be enhanced to read DICOM metadata
-            beam_count = self._count_treatment_beams(case_path)
+            validator = DataIntegrityValidator(self.logger)
+
+            # Get beam count using existing logic
+            beam_info = validator.get_beam_information(case_path)
+            beam_count = beam_info.get("beam_count", 0)
+
+            # Extract gantry number from DICOM (NEW)
+            try:
+                gantry_number = validator.extract_gantry_number_from_rtplan(
+                    case_path
+                )
+                case_data["GantryNum"] = gantry_number
+                self.logger.info(
+                    f"Extracted gantry number {gantry_number} from DICOM RT Plan"
+                )
+            except ProcessingError as e:
+                self.logger.error(
+                    f"Failed to extract gantry number for case {case_id}: {e}"
+                )
+                raise  # Re-raise to fail the case
+
             if beam_count > 0:
                 case_data["BeamNumbers"] = beam_count
-                case_data["GantryNum"] = beam_count  # Often the same as beam count
+
             self.logger.debug("Extracted case-specific data", {
                 "case_id": case_id,
                 "beam_count": beam_count,
                 "case_data": case_data
             })
         except Exception as e:
-            self.logger.warning(
-                "Could not extract case-specific data, using defaults", {
-                    "case_id": case_id,
-                    "error": str(e)
-                })
+            self.logger.error(f"Case data extraction failed for {case_id}: {e}")
+            raise  # Fail the case
         return case_data
 
     def _count_treatment_beams(self, case_path: Path) -> int:

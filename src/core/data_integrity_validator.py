@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 import pydicom
 from pydicom.errors import InvalidDicomError
+import re
 
 from src.infrastructure.logging_handler import StructuredLogger
 from src.domain.errors import ProcessingError
@@ -278,6 +279,14 @@ class DataIntegrityValidator:
                 "plan_date": ds.get("RTPlanDate", "Unknown"),
             }
 
+            # Try to extract gantry number
+            try:
+                gantry_number = self.extract_gantry_number_from_rtplan(case_path)
+                beam_info["gantry_number"] = gantry_number
+            except ProcessingError as e:
+                beam_info["gantry_error"] = str(e)
+                self.logger.warning(f"Could not extract gantry number: {e}")
+
             if hasattr(ds, "IonBeamSequence") and ds.IonBeamSequence:
                 for i, beam_ds in enumerate(ds.IonBeamSequence):
                     beam_description = getattr(beam_ds, "BeamDescription", "")
@@ -301,3 +310,146 @@ class DataIntegrityValidator:
 
         except Exception as e:
             return {"beam_count": 0, "beams": [], "error": str(e)}
+
+    def _extract_gantry_number_from_machine_name(self, machine_name: str) -> int:
+        """
+        Extract gantry number from machine name containing G1/G2 pattern.
+
+        Args:
+            machine_name: Treatment machine name from DICOM
+                (e.g., "Gantry_G1", "ProtonBeam_G2")
+
+        Returns:
+            int: Gantry number (1 or 2)
+
+        Raises:
+            ProcessingError: If G1/G2 pattern not found
+        """
+        if not machine_name:
+            raise ProcessingError("Machine name is empty or None")
+
+        # Look for G1 or G2 pattern in machine name
+        pattern = r'G([12])'
+        match = re.search(pattern, machine_name, re.IGNORECASE)
+
+        if not match:
+            raise ProcessingError(
+                f"No G1/G2 gantry pattern found in machine name: {machine_name}"
+            )
+
+        gantry_number = int(match.group(1))
+        self.logger.debug(
+            f"Extracted gantry number {gantry_number} from machine name: "
+            f"{machine_name}"
+        )
+        return gantry_number
+
+    def extract_gantry_number_from_rtplan(self, case_path: Path) -> int:
+        """
+        Extract and validate gantry number from RT Plan file.
+
+        Returns:
+            int: Gantry number from first treatment beam
+
+        Raises:
+            ProcessingError: If validation fails (multiple gantries,
+                no G1/G2, no DICOM, etc.)
+        """
+        try:
+            # Find RT Plan file
+            rtplan_path = self.find_rtplan_file(case_path)
+            if not rtplan_path:
+                raise ProcessingError(
+                    "No DICOM RT Plan file found for gantry number extraction"
+                )
+
+            # Parse RT plan
+            ds = pydicom.dcmread(rtplan_path)
+
+            if ds.get("Modality") != "RTPLAN":
+                raise ProcessingError(
+                    f"File is not an RT plan. Modality: {ds.get('Modality')}"
+                )
+
+            gantry_numbers = set()
+            treatment_beams_found = False
+
+            # Check for ion beam sequence (for proton plans)
+            if hasattr(ds, "IonBeamSequence") and ds.IonBeamSequence:
+                for i, beam_ds in enumerate(ds.IonBeamSequence):
+                    beam_description = getattr(beam_ds, "BeamDescription", "")
+                    beam_name = getattr(beam_ds, "BeamName", "")
+
+                    # Skip setup beams
+                    if beam_description == "Site Setup" or beam_name == "SETUP":
+                        self.logger.debug(f"Skipping setup beam: {beam_name}")
+                        continue
+
+                    treatment_beams_found = True
+                    machine_name = getattr(beam_ds, "TreatmentMachineName", "")
+
+                    if machine_name:
+                        try:
+                            gantry_num = self._extract_gantry_number_from_machine_name(
+                                machine_name
+                            )
+                            gantry_numbers.add(gantry_num)
+                        except ProcessingError as e:
+                            self.logger.error(
+                                f"Failed to extract gantry from beam {beam_name}: {e}"
+                            )
+                            raise
+
+            # Fallback: check regular beam sequence (for photon plans)
+            elif hasattr(ds, "BeamSequence") and ds.BeamSequence:
+                for i, beam_ds in enumerate(ds.BeamSequence):
+                    beam_description = getattr(beam_ds, "BeamDescription", "")
+                    beam_name = getattr(beam_ds, "BeamName", "")
+
+                    # Skip setup beams
+                    if beam_description == "Site Setup" or beam_name == "SETUP":
+                        self.logger.debug(f"Skipping setup beam: {beam_name}")
+                        continue
+
+                    treatment_beams_found = True
+                    machine_name = getattr(beam_ds, "TreatmentMachineName", "")
+
+                    if machine_name:
+                        try:
+                            gantry_num = self._extract_gantry_number_from_machine_name(
+                                machine_name
+                            )
+                            gantry_numbers.add(gantry_num)
+                        except ProcessingError as e:
+                            self.logger.error(
+                                f"Failed to extract gantry from beam {beam_name}: {e}"
+                            )
+                            raise
+
+            # Validation checks
+            if not treatment_beams_found:
+                raise ProcessingError("No treatment beams found in RT Plan")
+
+            if not gantry_numbers:
+                raise ProcessingError("No G1/G2 gantry pattern found in machine names")
+
+            if len(gantry_numbers) > 1:
+                raise ProcessingError(
+                    f"Multiple different gantry numbers found in single case: "
+                    f"{sorted(gantry_numbers)}"
+                )
+
+            # Return the single gantry number
+            gantry_number = list(gantry_numbers)[0]
+            self.logger.info(
+                f"Successfully extracted gantry number {gantry_number} from RT Plan"
+            )
+            return gantry_number
+
+        except ProcessingError:
+            # Re-raise ProcessingError as-is
+            raise
+        except Exception as e:
+            raise ProcessingError(
+                f"Unexpected error during gantry number extraction: {str(e)}"
+            )
