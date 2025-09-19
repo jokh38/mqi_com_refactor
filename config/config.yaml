@@ -60,8 +60,8 @@ hpc_connection:
   host: "10.243.62.128"
   user: "jokh38"
   # Using SSH keys is strongly recommended over passwords for security.
-  ssh_key_path: "C:\\Users\\breezing\\.ssh\\id_rsa"
-  # ssh_key_path: "C:\\Users\\com\\.ssh\\id_rsa"
+  # ssh_key_path: "C:\\Users\\breezing\\.ssh\\id_rsa"
+  ssh_key_path: "C:\\Users\\com\\.ssh\\id_rsa"
 
   # SSH connection timeout in seconds
   connection_timeout_seconds: 10
