@@ -151,6 +151,7 @@ class DashboardDataProvider:
         for gpu in raw_gpu_data:
             processed_gpus.append({
                 "uuid": gpu.uuid,
+                "gpu_index": gpu.gpu_index,
                 "name": gpu.name,
                 "status": gpu.status,
                 "assigned_case": gpu.assigned_case,

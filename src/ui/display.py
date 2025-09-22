@@ -229,7 +229,7 @@ class DisplayManager:
 
         for gpu in gpu_data:
             table.add_row(
-                gpu['uuid'][-4:],
+                str(gpu['gpu_index']),
                 gpu['name'],
                 formatter.get_gpu_status_text(gpu['status']),
                 formatter.format_memory_usage(gpu['memory_used'], gpu['memory_total']),
@@ -247,6 +247,10 @@ class DisplayManager:
         Returns:
             Panel: A `rich` Panel object.
         """
+        # Create a mapping from GPU UUID to index for display
+        gpu_data = self.provider.get_gpu_data()
+        uuid_to_index = {gpu['uuid']: gpu['gpu_index'] for gpu in gpu_data}
+
         table = Table(expand=True)
         table.add_column("Case ID", style="cyan", no_wrap=True)
         table.add_column("Status", style="white")
@@ -255,11 +259,21 @@ class DisplayManager:
         table.add_column("Elapsed", style="dim")
 
         for case in cases_data:
+            # Map GPU UUID to index for display
+            assigned_gpu_display = "N/A"
+            if case['assigned_gpu']:
+                gpu_index = uuid_to_index.get(case['assigned_gpu'])
+                if gpu_index is not None:
+                    assigned_gpu_display = str(gpu_index)
+                else:
+                    # Fallback to UUID suffix if mapping fails
+                    assigned_gpu_display = case['assigned_gpu'][-4:]
+
             table.add_row(
                 case['case_id'],
                 formatter.get_case_status_text(case['status']),
                 formatter.format_progress_bar(case['progress']),
-                case['assigned_gpu'][-4:] if case['assigned_gpu'] else "N/A",
+                assigned_gpu_display,
                 formatter.format_elapsed_time(case['elapsed_time'])
             )
         return Panel(table, title="[bold]Active Cases[/bold]", border_style="magenta")

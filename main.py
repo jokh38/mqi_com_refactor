@@ -315,37 +315,37 @@ class MQIApplication:
                             self.logger.info(f"Created {len(beam_jobs)} beam records in DB for case {case_id}")
 
                             # Step 2: Run case-level CSV interpreting
-                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.CSV_INTERPRETING)
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.CSV_INTERPRETING.value)
                             self.logger.info(f"Starting case-level CSV interpreting for {case_id}")
                             interpreting_success = run_case_level_csv_interpreting(case_id, case_path, self.settings)
                             if not interpreting_success:
                                 self.logger.error(f"Case-level CSV interpreting failed for {case_id}. Skipping.")
                                 case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="CSV interpreting failed.")
-                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED.value)
                                 continue
 
                             # Step 3: Generate TPS file with dynamic GPU assignments
-                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.TPS_GENERATION)
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.TPS_GENERATION.value)
                             self.logger.info(f"Starting case-level TPS generation for {case_id}")
                             gpu_assignments = run_case_level_tps_generation(case_id, case_path, len(beam_jobs), self.settings)
                             if not gpu_assignments:
                                 self.logger.error(f"Case-level TPS generation failed for {case_id}. Skipping.")
                                 case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="TPS generation failed.")
-                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED.value)
                                 continue
 
                             # Step 4: Run case-level file upload to HPC
-                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.UPLOADING)
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.UPLOADING.value)
                             self.logger.info(f"Starting case-level file upload for {case_id}")
                             upload_success = run_case_level_upload(case_id, case_path, self.settings)
                             if not upload_success:
                                 self.logger.error(f"Case-level upload failed for {case_id}. Skipping.")
                                 case_repo.update_case_status(case_id, CaseStatus.FAILED, error_message="File upload failed.")
-                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED)
+                                case_repo.update_beams_status_by_case_id(case_id, BeamStatus.FAILED.value)
                                 continue
 
                             # Step 5: Dispatch individual workers for simulation
-                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.PENDING)  # Workers will pick this up
+                            case_repo.update_beams_status_by_case_id(case_id, BeamStatus.PENDING.value)  # Workers will pick this up
                             self.logger.info(f"Dispatching workers for case: {case_id}")
                             for job in beam_jobs:
                                 beam_id = job["beam_id"]
