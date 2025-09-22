@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(python3:*)",
-      "Bash(flake8:*)"
+      "Bash(flake8:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git -c user.name=\"Claude\" -c user.email=\"noreply@anthropic.com\" commit -m \"$(cat <<''EOF''\n[BEHAVIORAL] Display GPU numeric indices in UI instead of UUID suffixes\n\n- Update GPU resources table to show numeric indices (0, 1, 2...) instead of UUID suffixes  \n- Add gpu_index field to processed GPU data in provider\n- Implement UUID-to-index mapping for assigned GPUs in cases table\n- Provides cleaner, more intuitive GPU identification for users\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
